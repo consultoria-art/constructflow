@@ -1,14 +1,28 @@
 const { PrismaClient } = require('@prisma/client');
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 
 const prisma = new PrismaClient();
 
 const server = http.createServer(async (req, res) => {
-  res.setHeader('Content-Type', 'application/json');
   res.setHeader('Access-Control-Allow-Origin', '*');
 
   try {
-    // ─── HEALTH CHECK ────────────────────────────────────────
+    // ─── FRONTEND ──────────────────────────────────────────
+    if (req.url === '/' || req.url === '/index.html') {
+      fs.readFile(path.join(__dirname, 'index.html'), (err, data) => {
+        if (err) { res.statusCode = 500; return res.end('Erro ao carregar página'); }
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        return res.end(data);
+      });
+      return;
+    }
+
+    // ─── API ───────────────────────────────────────────────
+    res.setHeader('Content-Type', 'application/json');
+
+    // Health check
     if (req.url === '/api/v1/health' && req.method === 'GET') {
       return res.end(JSON.stringify({
         status: 'ok',
@@ -18,7 +32,7 @@ const server = http.createServer(async (req, res) => {
       }));
     }
 
-    // ─── DASHBOARD ───────────────────────────────────────────
+    // Dashboard
     if (req.url === '/api/v1/dashboard' && req.method === 'GET') {
       const totalProjects = await prisma.project.count();
       const delayedProjects = await prisma.project.count({ where: { status: 'delayed' } });
@@ -40,7 +54,7 @@ const server = http.createServer(async (req, res) => {
       }));
     }
 
-    // ─── LISTAR PROJETOS ─────────────────────────────────────
+    // Listar projetos
     if (req.url === '/api/v1/projects' && req.method === 'GET') {
       const projects = await prisma.project.findMany({
         include: { tasks: true, alerts: true },
@@ -49,7 +63,7 @@ const server = http.createServer(async (req, res) => {
       return res.end(JSON.stringify(projects));
     }
 
-    // ─── CRIAR PROJETO ───────────────────────────────────────
+    // Criar projeto
     if (req.url === '/api/v1/projects' && req.method === 'POST') {
       let body = '';
       req.on('data', chunk => body += chunk);
@@ -62,7 +76,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // ─── LISTAR TAREFAS ──────────────────────────────────────
+    // Listar tarefas
     if (req.url === '/api/v1/tasks' && req.method === 'GET') {
       const tasks = await prisma.task.findMany({
         include: { project: true },
@@ -71,7 +85,7 @@ const server = http.createServer(async (req, res) => {
       return res.end(JSON.stringify(tasks));
     }
 
-    // ─── CRIAR TAREFA ────────────────────────────────────────
+    // Criar tarefa
     if (req.url === '/api/v1/tasks' && req.method === 'POST') {
       let body = '';
       req.on('data', chunk => body += chunk);
@@ -84,7 +98,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // ─── LISTAR ALERTAS ──────────────────────────────────────
+    // Listar alertas
     if (req.url === '/api/v1/alerts' && req.method === 'GET') {
       const alerts = await prisma.alert.findMany({
         include: { project: true },
@@ -93,7 +107,7 @@ const server = http.createServer(async (req, res) => {
       return res.end(JSON.stringify(alerts));
     }
 
-    // ─── CRIAR ALERTA ────────────────────────────────────────
+    // Criar alerta
     if (req.url === '/api/v1/alerts' && req.method === 'POST') {
       let body = '';
       req.on('data', chunk => body += chunk);
