@@ -1,6 +1,13 @@
 {
-  "name": "@constructflow/api",
+  "name": "constructflow-api",
   "version": "1.0.0",
-  "scripts": { "start": "node server.js" },
-  "dependencies": {}
+  "main": "server.js",
+  "scripts": {
+    "start": "npx prisma generate && node server.js",
+    "build": "npx prisma generate"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.0.0",
+    "prisma": "^6.0.0"
+  }
 }
