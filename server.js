@@ -2,131 +2,155 @@ const { PrismaClient } = require('@prisma/client');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 const prisma = new PrismaClient();
+const JWT_SECRET = process.env.JWT_SECRET || 'constructflow-secret-change-in-production';
 
+// ─── MIDDLEWARE: extrair usuário do token ──────────────
+function getUserFromToken(req) {
+  const auth = req.headers['authorization'];
+  if (!auth || !auth.startsWith('Bearer ')) return null;
+  try {
+    return jwt.verify(auth.split(' ')[1], JWT_SECRET);
+  } catch {
+    return null;
+  }
+}
+
+// ─── HELPERS ───────────────────────────────────────────
+function sendJSON(res, status, data) {
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(data));
+}
+
+function parseBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try { resolve(JSON.parse(body)); }
+      catch { reject(new Error('JSON inválido')); }
+    });
+  });
+}
+
+// ─── SERVER ────────────────────────────────────────────
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204;
+    return res.end();
+  }
 
   try {
-    // ─── FRONTEND ──────────────────────────────────────────
+    // ─── FRONTEND ──────────────────────────────────────
     if (req.url === '/' || req.url === '/index.html') {
-      fs.readFile(path.join(__dirname, 'index.html'), (err, data) => {
-        if (err) { res.statusCode = 500; return res.end('Erro ao carregar página'); }
+      return fs.readFile(path.join(__dirname, 'index.html'), (err, data) => {
+        if (err) return sendJSON(res, 500, { error: 'Erro ao carregar página' });
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        return res.end(data);
+        res.end(data);
       });
-      return;
     }
 
-    // ─── API ───────────────────────────────────────────────
-    res.setHeader('Content-Type', 'application/json');
+    // ─── ROTAS PÚBLICAS ────────────────────────────────
 
     // Health check
     if (req.url === '/api/v1/health' && req.method === 'GET') {
-      return res.end(JSON.stringify({
+      return sendJSON(res, 200, {
         status: 'ok',
         version: '1.0.0',
         name: 'ConstructFlow API',
         timestamp: new Date().toISOString()
-      }));
-    }
-
-    // Dashboard
-    if (req.url === '/api/v1/dashboard' && req.method === 'GET') {
-      const totalProjects = await prisma.project.count();
-      const delayedProjects = await prisma.project.count({ where: { status: 'delayed' } });
-      const totalTasks = await prisma.task.count();
-      const pendingTasks = await prisma.task.count({ where: { status: 'pending' } });
-      const totalHours = totalTasks * 8;
-
-      const projects = await prisma.project.findMany();
-      const totalBudget = projects.reduce((sum, p) => sum + (p.budget || 0), 0);
-      const totalSpent = projects.reduce((sum, p) => sum + (p.spent || 0), 0);
-      const budgetUsage = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0;
-
-      return res.end(JSON.stringify({
-        projetosAndamento: totalProjects,
-        atrasados: delayedProjects,
-        orcamentoVsGasto: budgetUsage,
-        totalHoras: totalHours,
-        tarefasPendentes: pendingTasks
-      }));
-    }
-
-    // Listar projetos
-    if (req.url === '/api/v1/projects' && req.method === 'GET') {
-      const projects = await prisma.project.findMany({
-        include: { tasks: true, alerts: true },
-        orderBy: { createdAt: 'desc' }
       });
-      return res.end(JSON.stringify(projects));
     }
 
-    // Criar projeto
-    if (req.url === '/api/v1/projects' && req.method === 'POST') {
-      let body = '';
-      req.on('data', chunk => body += chunk);
-      req.on('end', async () => {
-        const data = JSON.parse(body);
-        const project = await prisma.project.create({ data });
-        res.statusCode = 201;
-        return res.end(JSON.stringify(project));
+    // Signup (criar conta)
+    if (req.url === '/api/v1/auth/signup' && req.method === 'POST') {
+      const { name, email, password, organizationName } = await parseBody(req);
+
+      if (!name || !email || !password || !organizationName) {
+        return sendJSON(res, 400, { error: 'Todos os campos são obrigatórios' });
+      }
+      if (password.length < 6) {
+        return sendJSON(res, 400, { error: 'Senha deve ter no mínimo 6 caracteres' });
+      }
+
+      const existing = await prisma.user.findUnique({ where: { email } });
+      if (existing) {
+        return sendJSON(res, 400, { error: 'Email já cadastrado' });
+      }
+
+      const slug = organizationName.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 40);
+
+      const passwordHash = await bcrypt.hash(password, 10);
+
+      const org = await prisma.organization.create({
+        data: {
+          name: organizationName,
+          slug,
+          users: {
+            create: {
+              name,
+              email,
+              passwordHash,
+              role: 'admin'
+            }
+          }
+        },
+        include: { users: true }
       });
-      return;
-    }
 
-    // Listar tarefas
-    if (req.url === '/api/v1/tasks' && req.method === 'GET') {
-      const tasks = await prisma.task.findMany({
-        include: { project: true },
-        orderBy: { createdAt: 'desc' }
+      const token = jwt.sign(
+        { userId: org.users[0].id, email, organizationId: org.id, role: 'admin' },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+
+      return sendJSON(res, 201, {
+        token,
+        user: { id: org.users[0].id, name, email, role: 'admin' },
+        organization: { id: org.id, name: org.name, slug: org.slug }
       });
-      return res.end(JSON.stringify(tasks));
     }
 
-    // Criar tarefa
-    if (req.url === '/api/v1/tasks' && req.method === 'POST') {
-      let body = '';
-      req.on('data', chunk => body += chunk);
-      req.on('end', async () => {
-        const data = JSON.parse(body);
-        const task = await prisma.task.create({ data });
-        res.statusCode = 201;
-        return res.end(JSON.stringify(task));
+    // Login
+    if (req.url === '/api/v1/auth/login' && req.method === 'POST') {
+      const { email, password } = await parseBody(req);
+
+      if (!email || !password) {
+        return sendJSON(res, 400, { error: 'Email e senha são obrigatórios' });
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { email },
+        include: { organization: true }
       });
-      return;
-    }
 
-    // Listar alertas
-    if (req.url === '/api/v1/alerts' && req.method === 'GET') {
-      const alerts = await prisma.alert.findMany({
-        include: { project: true },
-        orderBy: { createdAt: 'desc' }
-      });
-      return res.end(JSON.stringify(alerts));
-    }
+      if (!user) {
+        return sendJSON(res, 401, { error: 'Email ou senha inválidos' });
+      }
 
-    // Criar alerta
-    if (req.url === '/api/v1/alerts' && req.method === 'POST') {
-      let body = '';
-      req.on('data', chunk => body += chunk);
-      req.on('end', async () => {
-        const data = JSON.parse(body);
-        const alert = await prisma.alert.create({ data });
-        res.statusCode = 201;
-        return res.end(JSON.stringify(alert));
-      });
-      return;
-    }
+      const valid = await bcrypt.compare(password, user.passwordHash);
+      if (!valid) {
+        return sendJSON(res, 401, { error: 'Email ou senha inválidos' });
+      }
 
-    res.statusCode = 404;
-    res.end(JSON.stringify({ error: 'Rota não encontrada' }));
-  } catch (error) {
-    res.statusCode = 500;
-    res.end(JSON.stringify({ error: error.message }));
-  }
-});
+      if (!user.organization.active) {
+        return sendJSON(res, 403, { error: 'Conta desativada. Entre em contato com o suporte.' });
+      }
 
-const PORT = process.env.PORT || 3001;
-server.listen(PORT, '0.0.0.0', () => console.log(`API rodando na porta ${PORT}`));
+      const token = jwt.sign(
+        { userId: user.id, email: user.email, organizationId: user.organizationId, role: user.role },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+
+      return sendJSON(res, 200, {
+        token,
+        user: { id: user.id, name:
