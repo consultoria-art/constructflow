@@ -1,32 +1,21 @@
 const http = require('http');
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
 
-const server = http.createServer(async (req, res) => {
+const server = http.createServer((req, res) => {
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Access-Control-Allow-Origin', '*');
 
   if (req.url === '/api/v1/health') {
-    try {
-      await prisma.$queryRaw`SELECT 1`;
-      return res.end(JSON.stringify({
-        status: 'ok',
-        database: 'connected',
-        version: '1.0.0',
-        name: 'ConstructFlow API'
-      }));
-    } catch (err) {
-      res.statusCode = 500;
-      return res.end(JSON.stringify({ status: 'error', database: 'disconnected' }));
-    }
+    return res.end(JSON.stringify({
+      status: 'ok',
+      version: '1.0.0',
+      name: 'ConstructFlow API',
+      timestamp: new Date().toISOString()
+    }));
   }
 
   res.end(JSON.stringify({
     message: 'ConstructFlow API rodando!',
-    routes: [
-      'GET /api/v1/health - Verificar status',
-      'POST /api/v1/auth/register - Criar conta'
-    ]
+    routes: ['GET /api/v1/health']
   }));
 });
 
