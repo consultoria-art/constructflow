@@ -1,0 +1,58 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  status      String   @default("active")
+  progress    Float    @default(0)
+  deadline    DateTime?
+  budget      Float?
+  spent       Float?
+  responsible String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tasks       Task[]
+  alerts      Alert[]
+}
+
+model Task {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  status      String   @default("pending")
+  phase       String?
+  startDate   DateTime?
+  endDate     DateTime?
+  progress    Float    @default(0)
+  responsible String?
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Alert {
+  id        String   @id @default(cuid())
+  type      String   @default("info")
+  message   String
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id])
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Team {
+  id    String @id @default(cuid())
+  name  String
+  role  String
+  email String? @unique
+  avatar String?
+}
