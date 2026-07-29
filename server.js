@@ -13,11 +13,16 @@ const server = http.createServer((req, res) => {
     }));
   }
 
-  res.end(JSON.stringify({
-    message: 'ConstructFlow API rodando!',
-    routes: ['GET /api/v1/health']
-  }));
+  if (req.url === '/') {
+    return res.end(JSON.stringify({
+      message: 'ConstructFlow API rodando!',
+      routes: ['GET /api/v1/health']
+    }));
+  }
+
+  res.statusCode = 404;
+  res.end(JSON.stringify({ error: 'Rota não encontrada' }));
 });
 
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => console.log(`API rodando na porta ${PORT}`));
+server.listen(PORT, '0.0.0.0', () => console.log(`API rodando na porta ${PORT}`));
