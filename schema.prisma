@@ -7,20 +7,46 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Organization {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  plan      String    @default("free")
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  users     User[]
+  projects  Project[]
+}
+
+model User {
+  id             String       @id @default(cuid())
+  email          String       @unique
+  name           String
+  passwordHash   String
+  role           String       @default("admin")
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
 model Project {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  status      String   @default("active")
-  progress    Float    @default(0)
-  deadline    DateTime?
-  budget      Float?
-  spent       Float?
-  responsible String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  tasks       Task[]
-  alerts      Alert[]
+  id             String       @id @default(cuid())
+  name           String
+  description    String?
+  status         String       @default("active")
+  progress       Float        @default(0)
+  deadline       DateTime?
+  budget         Float?
+  spent          Float?
+  responsible    String?
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  tasks          Task[]
+  alerts         Alert[]
 }
 
 model Task {
@@ -50,9 +76,9 @@ model Alert {
 }
 
 model Team {
-  id    String @id @default(cuid())
-  name  String
-  role  String
-  email String? @unique
-  avatar String?
+  id      String  @id @default(cuid())
+  name    String
+  role    String
+  email   String? @unique
+  avatar  String?
 }
