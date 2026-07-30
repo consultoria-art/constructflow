@@ -53,7 +53,7 @@ const server = http.createServer(async (req, res) => {
       const { name, email, password, organizationName } = await parseBody(req);
       if (!name || !email || !password || !organizationName)
         return sendJSON(res, 400, { error: 'Todos os campos sao obrigatorios' });
-      if (password.length &lt; 6)
+      if (password.length < 6)
         return sendJSON(res, 400, { error: 'Senha deve ter no minimo 6 caracteres' });
       const exist = await prisma.user.findUnique({ where: { email } });
       if (exist) return sendJSON(res, 400, { error: 'Email ja cadastrado' });
