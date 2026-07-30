@@ -1,13 +1,23 @@
 const express = require('express');
-const cors = require('cors');
 const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Configurações Globais
-app.use(cors());
+// Configuração de CORS manual usando middleware nativo (Sem precisar instalar pacotes)
+app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
+    
+    // Trata a requisição de pré-autenticação (Preflight) do navegador
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+    next();
+});
+
 app.use(express.json());
 
 // Rota de Diagnóstico Inicial
