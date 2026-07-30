@@ -1,12 +1,3 @@
-
-Vou te passar o arquivo **completo e limpo** agora — você só precisa substituir no GitHub.
-
-1. Acesse: https://github.com/consultoria-art/constructflow/blob/main/server.js
-
-2. Clique no lápis ✏️, **selecione tudo** e **delete**
-
-3. Cole **exatamente** o código abaixo (sem formatação extra):
-```javascript
 const { PrismaClient } = require('@prisma/client');
 const http = require('http');
 const fs = require('fs');
@@ -28,11 +19,7 @@ function parseBody(req) {
     let body = '';
     req.on('data', (c) => (body += c));
     req.on('end', () => {
-      try {
-        resolve(JSON.parse(body));
-      } catch {
-        resolve({});
-      }
+      try { resolve(JSON.parse(body)); } catch { resolve({}); }
     });
   });
 }
@@ -40,21 +27,14 @@ function parseBody(req) {
 function getUser(req) {
   const auth = req.headers['authorization'];
   if (!auth || !auth.startsWith('Bearer ')) return null;
-  try {
-    return jwt.verify(auth.split(' ')[1], JWT_SECRET);
-  } catch {
-    return null;
-  }
+  try { return jwt.verify(auth.split(' ')[1], JWT_SECRET); } catch { return null; }
 }
 
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (req.method === 'OPTIONS') {
-    res.statusCode = 204;
-    return res.end();
-  }
+  if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
 
   try {
     if (req.url === '/' || req.url === '/index.html') {
@@ -64,122 +44,58 @@ const server = http.createServer(async (req, res) => {
         res.end(data);
       });
     }
-
     if (req.url === '/api/v1/health' && req.method === 'GET') {
       return sendJSON(res, 200, { status: 'ok' });
     }
-
     if (req.url === '/api/v1/auth/signup' && req.method === 'POST') {
       const { name, email, password, organizationName } = await parseBody(req);
+      if (!name || !email || !password || !organizationName)
         return sendJSON(res, 400, { error: 'Todos os campos sao obrigatorios' });
-      }
-      if (password.length < 6) {
+      if (password.length < 6)
         return sendJSON(res, 400, { error: 'Senha deve ter no minimo 6 caracteres' });
-      }
       const exist = await prisma.user.findUnique({ where: { email } });
       if (exist) return sendJSON(res, 400, { error: 'Email ja cadastrado' });
       const slug = organizationName.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 40);
       const hash = await bcrypt.hash(password, 10);
       const org = await prisma.organization.create({
-        data: {
-          name: organizationName,
-          slug,
-          users: {
-            create: { name, email, passwordHash: hash, role: 'admin' },
-          },
-        },
-        include: { users: true },
+        data: { name: organizationName, slug, users: { create: { name, email, passwordHash: hash, role: 'admin' } } },
+        include: { users: true }
       });
-      const token = jwt.sign(
-        { userId: org.users[0].id, email, organizationId: org.id, role: 'admin' },
-        JWT_SECRET,
-        { expiresIn: '7d' }
-      );
-      return sendJSON(res, 201, {
-        token,
-        user: { id: org.users[0].id, name, email, role: 'admin' },
-        organization: { id: org.id, name: org.name, slug: org.slug },
-      });
+      const token = jwt.sign({ userId: org.users[0].id, email, organizationId: org.id, role: 'admin' }, JWT_SECRET, { expiresIn: '7d' });
+      return sendJSON(res, 201, { token, user: { id: org.users[0].id, name, email, role: 'admin' }, organization: { id: org.id, name: org.name, slug: org.slug } });
     }
-
     if (req.url === '/api/v1/auth/login' && req.method === 'POST') {
       const { email, password } = await parseBody(req);
-      if (!email || !password) {
-        return sendJSON(res, 400, { error: 'Email e senha obrigatorios' });
-      }
-      const user = await prisma.user.findUnique({
-        where: { email },
-        include: { organization: true },
-      });
+      if (!email || !password) return sendJSON(res, 400, { error: 'Email e senha obrigatorios' });
+      const user = await prisma.user.findUnique({ where: { email }, include: { organization: true } });
       if (!user) return sendJSON(res, 401, { error: 'Email ou senha invalidos' });
-      const valid = await bcrypt.compare(password, user.passwordHash);
-      if (!valid) return sendJSON(res, 401, { error: 'Email ou senha invalidos' });
-      if (!user.organization.active) {
-        return sendJSON(res, 403, { error: 'Conta desativada' });
-      }
-      const token = jwt.sign(
-        { userId: user.id, email, organizationId: user.organizationId, role: user.role },
-        JWT_SECRET,
-        { expiresIn: '7d' }
-      );
-      return sendJSON(res, 200, {
-        token,
-        user: { id: user.id, name: user.name, email: user.email, role: user.role },
-        organization: { id: user.organization.id, name: user.organization.name, slug: user.organization.slug },
-      });
+      if (!await bcrypt.compare(password, user.passwordHash)) return sendJSON(res, 401, { error: 'Email ou senha invalidos' });
+      if (!user.organization.active) return sendJSON(res, 403, { error: 'Conta desativada' });
+      const token = jwt.sign({ userId: user.id, email, organizationId: user.organizationId, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+      return sendJSON(res, 200, { token, user: { id: user.id, name: user.name, email: user.email, role: user.role }, organization: { id: user.organization.id, name: user.organization.name, slug: user.organization.slug } });
     }
-
     const user = getUser(req);
     if (!user) return sendJSON(res, 401, { error: 'Token ausente' });
-
     if (req.url === '/api/v1/auth/me' && req.method === 'GET') {
-      const u = await prisma.user.findUnique({
-        where: { id: user.userId },
-        include: { organization: true },
-      });
+      const u = await prisma.user.findUnique({ where: { id: user.userId }, include: { organization: true } });
       if (!u) return sendJSON(res, 404, { error: 'Usuario nao encontrado' });
-      return sendJSON(res, 200, {
-        id: u.id,
-        name: u.name,
-        email: u.email,
-        role: u.role,
-        organization: { id: u.organization.id, name: u.organization.name, slug: u.organization.slug },
-      });
+      return sendJSON(res, 200, { id: u.id, name: u.name, email: u.email, role: u.role, organization: { id: u.organization.id, name: u.organization.name, slug: u.organization.slug } });
     }
-
     if (req.url === '/api/v1/dashboard' && req.method === 'GET') {
       const tp = await prisma.project.count({ where: { organizationId: user.organizationId } });
-      const td = await prisma.project.count({ where: { organizationId: user.organizationId, status: 'delayed' } });
-      const tt = await prisma.task.count({ where: { project: { organizationId: user.organizationId } } });
-      const tpen = await prisma.task.count({ where: { project: { organizationId: user.organizationId }, status: 'pending' } });
-      const projs = await prisma.project.findMany({ where: { organizationId: user.organizationId } });
-      const tb = projs.reduce((s, p) => s + (p.budget || 0), 0);
-      const ts = projs.reduce((s, p) => s + (p.spent || 0), 0);
-      return sendJSON(res, 200, {
-        projetosAndamento: tp,
-        atrasados: td,
-        orcamentoVsGasto: tb > 0 ? Math.round((ts / tb) * 100) : 0,
-        totalHoras: tt * 8,
-        tarefasPendentes: tpen,
-      });
+      const pp = await prisma.project.findMany({ where: { organizationId: user.organizationId } });
+      const tb = pp.reduce((s, p) => s + (p.budget || 0), 0);
+      const ts = pp.reduce((s, p) => s + (p.spent || 0), 0);
+      return sendJSON(res, 200, { projetosAndamento: tp, atrasados: pp.filter(p => p.status === 'delayed').length, orcamentoVsGasto: tb > 0 ? Math.round((ts / tb) * 100) : 0, totalHoras: tp * 80, tarefasPendentes: 0 });
     }
-
     if (req.url === '/api/v1/projects' && req.method === 'GET') {
-      const projects = await prisma.project.findMany({
-        where: { organizationId: user.organizationId },
-        include: { tasks: true, alerts: true },
-        orderBy: { createdAt: 'desc' },
-      });
-      return sendJSON(res, 200, projects);
+      return sendJSON(res, 200, await prisma.project.findMany({ where: { organizationId: user.organizationId }, orderBy: { createdAt: 'desc' } }));
     }
-
     if (req.url === '/api/v1/projects' && req.method === 'POST') {
       const data = await parseBody(req);
       data.organizationId = user.organizationId;
-      const project = await prisma.project.create({ data });
-      return sendJSON(res, 201, project);
+      return sendJSON(res, 201, await prisma.project.create({ data }));
     }
-
     return sendJSON(res, 404, { error: 'Rota nao encontrada' });
   } catch (error) {
     return sendJSON(res, 500, { error: error.message });
