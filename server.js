@@ -104,17 +104,22 @@ const server = http.createServer(async (req, res) => {
     if (req.url === '/api/v1/projects' && req.method === 'POST') {
       const data = await parseBody(req);
       data.organizationId = user.organizationId;
+      if (data.deadline) data.deadline = new Date(data.deadline);
       return sendJSON(res, 201, await prisma.project.create({ data }));
     }
 
     if (req.url.startsWith('/api/v1/projects/') && req.method === 'PUT') {
       const id = req.url.split('/')[4];
       const data = await parseBody(req);
+      if (data.deadline) data.deadline = new Date(data.deadline);
+      delete data.organizationId;
       return sendJSON(res, 200, await prisma.project.update({ where: { id }, data }));
     }
 
     if (req.url.startsWith('/api/v1/projects/') && req.method === 'DELETE') {
       const id = req.url.split('/')[4];
+      await prisma.task.deleteMany({ where: { projectId: id } });
+      await prisma.alert.deleteMany({ where: { projectId: id } });
       await prisma.project.delete({ where: { id } });
       return sendJSON(res, 200, { success: true });
     }
@@ -125,12 +130,14 @@ const server = http.createServer(async (req, res) => {
 
     if (req.url === '/api/v1/tasks' && req.method === 'POST') {
       const data = await parseBody(req);
+      if (data.deadline) data.deadline = new Date(data.deadline);
       return sendJSON(res, 201, await prisma.task.create({ data }));
     }
 
     if (req.url.startsWith('/api/v1/tasks/') && req.method === 'PUT') {
       const id = req.url.split('/')[4];
       const data = await parseBody(req);
+      if (data.deadline) data.deadline = new Date(data.deadline);
       return sendJSON(res, 200, await prisma.task.update({ where: { id }, data }));
     }
 
@@ -159,6 +166,43 @@ const server = http.createServer(async (req, res) => {
       const id = req.url.split('/')[4];
       await prisma.alert.delete({ where: { id } });
       return sendJSON(res, 200, { success: true });
+    }
+
+    // ============ USUARIOS / EQUIPE ============
+    if (req.url === '/api/v1/users' && req.method === 'GET') {
+      const users = await prisma.user.findMany({ where: { organizationId: user.organizationId }, orderBy: { createdAt: 'asc' } });
+      return sendJSON(res, 200, users.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role, createdAt: u.createdAt })));
+    }
+
+    if (req.url === '/api/v1/users' && req.method === 'POST') {
+      if (user.role !== 'admin') return sendJSON(res, 403, { error: 'Apenas administradores podem convidar usuarios' });
+      const { name, email, password, role } = await parseBody(req);
+      if (!name || !email || !password) return sendJSON(res, 400, { error: 'Nome, email e senha sao obrigatorios' });
+      if (password.length < 6) return sendJSON(res, 400, { error: 'Senha deve ter no minimo 6 caracteres' });
+      const exist = await prisma.user.findUnique({ where: { email } });
+      if (exist) return sendJSON(res, 400, { error: 'Email ja cadastrado' });
+      const hash = await bcrypt.hash(password, 10);
+      const newUser = await prisma.user.create({ data: { name, email, passwordHash: hash, role: role || 'user', organizationId: user.organizationId } });
+      return sendJSON(res, 201, { id: newUser.id, name: newUser.name, email: newUser.email, role: newUser.role });
+    }
+
+    if (req.url.startsWith('/api/v1/users/') && req.method === 'DELETE') {
+      if (user.role !== 'admin') return sendJSON(res, 403, { error: 'Apenas administradores podem remover usuarios' });
+      const id = req.url.split('/')[4];
+      if (id === user.userId) return sendJSON(res, 400, { error: 'Voce nao pode remover a si mesmo' });
+      const target = await prisma.user.findFirst({ where: { id, organizationId: user.organizationId } });
+      if (!target) return sendJSON(res, 404, { error: 'Usuario nao encontrado' });
+      await prisma.user.delete({ where: { id } });
+      return sendJSON(res, 200, { success: true });
+    }
+
+    // ============ ORGANIZACAO / CONFIGURACOES ============
+    if (req.url === '/api/v1/organization' && req.method === 'PUT') {
+      if (user.role !== 'admin') return sendJSON(res, 403, { error: 'Apenas administradores podem alterar essas configuracoes' });
+      const { name } = await parseBody(req);
+      if (!name) return sendJSON(res, 400, { error: 'Nome e obrigatorio' });
+      const org = await prisma.organization.update({ where: { id: user.organizationId }, data: { name } });
+      return sendJSON(res, 200, { id: org.id, name: org.name, slug: org.slug });
     }
 
     return sendJSON(res, 404, { error: 'Rota nao encontrada' });
