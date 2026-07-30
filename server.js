@@ -1,3 +1,12 @@
+
+Preciso que você substitua o arquivo **completo e limpo** no GitHub. Siga exatamente:
+
+1. Acesse: https://github.com/consultoria-art/constructflow/blob/main/server.js
+
+2. Clique no lápis ✏️, selecione **tudo**, delete
+
+3. Cole **exatamente** o código abaixo (sem pular linha, sem editar):
+```javascript
 const { PrismaClient } = require('@prisma/client');
 const http = require('http');
 const fs = require('fs');
@@ -51,7 +60,6 @@ const server = http.createServer(async (req, res) => {
 
     if (req.url === '/api/v1/auth/signup' && req.method === 'POST') {
       const { name, email, password, organizationName } = await parseBody(req);
-      if (!name || !email || !password || !organizationName)
         return sendJSON(res, 400, { error: 'Todos os campos sao obrigatorios' });
       if (password.length < 6)
         return sendJSON(res, 400, { error: 'Senha deve ter no minimo 6 caracteres' });
