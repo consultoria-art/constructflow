@@ -32,7 +32,7 @@ function getUser(req) {
 
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
 
@@ -44,14 +44,16 @@ const server = http.createServer(async (req, res) => {
         res.end(data);
       });
     }
+
     if (req.url === '/api/v1/health' && req.method === 'GET') {
       return sendJSON(res, 200, { status: 'ok' });
     }
+
     if (req.url === '/api/v1/auth/signup' && req.method === 'POST') {
       const { name, email, password, organizationName } = await parseBody(req);
       if (!name || !email || !password || !organizationName)
         return sendJSON(res, 400, { error: 'Todos os campos sao obrigatorios' });
-      if (password.length < 6)
+      if (password.length &lt; 6)
         return sendJSON(res, 400, { error: 'Senha deve ter no minimo 6 caracteres' });
       const exist = await prisma.user.findUnique({ where: { email } });
       if (exist) return sendJSON(res, 400, { error: 'Email ja cadastrado' });
@@ -64,6 +66,7 @@ const server = http.createServer(async (req, res) => {
       const token = jwt.sign({ userId: org.users[0].id, email, organizationId: org.id, role: 'admin' }, JWT_SECRET, { expiresIn: '7d' });
       return sendJSON(res, 201, { token, user: { id: org.users[0].id, name, email, role: 'admin' }, organization: { id: org.id, name: org.name, slug: org.slug } });
     }
+
     if (req.url === '/api/v1/auth/login' && req.method === 'POST') {
       const { email, password } = await parseBody(req);
       if (!email || !password) return sendJSON(res, 400, { error: 'Email e senha obrigatorios' });
@@ -74,13 +77,16 @@ const server = http.createServer(async (req, res) => {
       const token = jwt.sign({ userId: user.id, email, organizationId: user.organizationId, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
       return sendJSON(res, 200, { token, user: { id: user.id, name: user.name, email: user.email, role: user.role }, organization: { id: user.organization.id, name: user.organization.name, slug: user.organization.slug } });
     }
+
     const user = getUser(req);
     if (!user) return sendJSON(res, 401, { error: 'Token ausente' });
+
     if (req.url === '/api/v1/auth/me' && req.method === 'GET') {
       const u = await prisma.user.findUnique({ where: { id: user.userId }, include: { organization: true } });
       if (!u) return sendJSON(res, 404, { error: 'Usuario nao encontrado' });
       return sendJSON(res, 200, { id: u.id, name: u.name, email: u.email, role: u.role, organization: { id: u.organization.id, name: u.organization.name, slug: u.organization.slug } });
     }
+
     if (req.url === '/api/v1/dashboard' && req.method === 'GET') {
       const tp = await prisma.project.count({ where: { organizationId: user.organizationId } });
       const pp = await prisma.project.findMany({ where: { organizationId: user.organizationId } });
@@ -88,14 +94,71 @@ const server = http.createServer(async (req, res) => {
       const ts = pp.reduce((s, p) => s + (p.spent || 0), 0);
       return sendJSON(res, 200, { projetosAndamento: tp, atrasados: pp.filter(p => p.status === 'delayed').length, orcamentoVsGasto: tb > 0 ? Math.round((ts / tb) * 100) : 0, totalHoras: tp * 80, tarefasPendentes: 0 });
     }
+
     if (req.url === '/api/v1/projects' && req.method === 'GET') {
       return sendJSON(res, 200, await prisma.project.findMany({ where: { organizationId: user.organizationId }, orderBy: { createdAt: 'desc' } }));
     }
+
     if (req.url === '/api/v1/projects' && req.method === 'POST') {
       const data = await parseBody(req);
       data.organizationId = user.organizationId;
       return sendJSON(res, 201, await prisma.project.create({ data }));
     }
+
+    if (req.url.startsWith('/api/v1/projects/') && req.method === 'PUT') {
+      const id = req.url.split('/')[4];
+      const data = await parseBody(req);
+      return sendJSON(res, 200, await prisma.project.update({ where: { id }, data }));
+    }
+
+    if (req.url.startsWith('/api/v1/projects/') && req.method === 'DELETE') {
+      const id = req.url.split('/')[4];
+      await prisma.project.delete({ where: { id } });
+      return sendJSON(res, 200, { success: true });
+    }
+
+    if (req.url === '/api/v1/tasks' && req.method === 'GET') {
+      return sendJSON(res, 200, await prisma.task.findMany({ where: { project: { organizationId: user.organizationId } }, include: { project: true }, orderBy: { createdAt: 'desc' } }));
+    }
+
+    if (req.url === '/api/v1/tasks' && req.method === 'POST') {
+      const data = await parseBody(req);
+      return sendJSON(res, 201, await prisma.task.create({ data }));
+    }
+
+    if (req.url.startsWith('/api/v1/tasks/') && req.method === 'PUT') {
+      const id = req.url.split('/')[4];
+      const data = await parseBody(req);
+      return sendJSON(res, 200, await prisma.task.update({ where: { id }, data }));
+    }
+
+    if (req.url.startsWith('/api/v1/tasks/') && req.method === 'DELETE') {
+      const id = req.url.split('/')[4];
+      await prisma.task.delete({ where: { id } });
+      return sendJSON(res, 200, { success: true });
+    }
+
+    if (req.url === '/api/v1/alerts' && req.method === 'GET') {
+      return sendJSON(res, 200, await prisma.alert.findMany({ where: { project: { organizationId: user.organizationId } }, include: { project: true }, orderBy: { createdAt: 'desc' } }));
+    }
+
+    if (req.url === '/api/v1/alerts' && req.method === 'POST') {
+      const data = await parseBody(req);
+      return sendJSON(res, 201, await prisma.alert.create({ data }));
+    }
+
+    if (req.url.startsWith('/api/v1/alerts/') && req.method === 'PUT') {
+      const id = req.url.split('/')[4];
+      const data = await parseBody(req);
+      return sendJSON(res, 200, await prisma.alert.update({ where: { id }, data }));
+    }
+
+    if (req.url.startsWith('/api/v1/alerts/') && req.method === 'DELETE') {
+      const id = req.url.split('/')[4];
+      await prisma.alert.delete({ where: { id } });
+      return sendJSON(res, 200, { success: true });
+    }
+
     return sendJSON(res, 404, { error: 'Rota nao encontrada' });
   } catch (error) {
     return sendJSON(res, 500, { error: error.message });
