@@ -181,11 +181,16 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <a class="active" data-view="visaogeral" onclick="showView('visaogeral')"><span>📊</span> Visao Geral</a>
 <a data-view="projetos" onclick="showView('projetos')"><span>📁</span> Projetos</a>
 <a data-view="tarefas" onclick="showView('tarefas')"><span>🗂️</span> Tarefas (Kanban)</a>
+<a data-view="eap" onclick="showView('eap')"><span>🌳</span> EAP / Marcos</a>
 <a data-view="suprimentos" onclick="showView('suprimentos')"><span>📦</span> Suprimentos</a>
+<a data-view="despesas" onclick="showView('despesas')"><span>💵</span> Despesas</a>
+<a data-view="riscos" onclick="showView('riscos')"><span>⚠️</span> Riscos e Pendencias</a>
+<a data-view="documentos" onclick="showView('documentos')"><span>📎</span> Documentos</a>
 <a data-view="comunicacao" onclick="showView('comunicacao')"><span>💬</span> Comunicacao</a>
 <a data-view="calendario" onclick="showView('calendario')"><span>📅</span> Calendario</a>
 <a data-view="orcamento" onclick="showView('orcamento')"><span>💰</span> Orcamento</a>
 <a data-view="relatorios" onclick="showView('relatorios')"><span>📄</span> Relatorios</a>
+<a data-view="encerramento" onclick="showView('encerramento')"><span>🏁</span> Encerramento</a>
 <a data-view="equipe" onclick="showView('equipe')"><span>👥</span> Equipe</a>
 <a data-view="configuracoes" onclick="showView('configuracoes')"><span>⚙️</span> Configuracoes</a>
 </nav>
@@ -265,6 +270,17 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
     </div>
   </div>
 
+  <!-- EAP / MARCOS -->
+  <div class="view-section" id="view-eap">
+    <div class="header">
+      <div><h1>EAP / Marcos</h1><p>Estrutura Analitica do Projeto - hierarquia de fases e marcos</p></div>
+      <div class="header-right">
+        <select class="input" id="eapProjectSelect" style="margin-bottom:0;width:220px;" onchange="loadEapView()"></select>
+      </div>
+    </div>
+    <div class="card"><div id="eapTree"><div class="loading">Selecione um projeto</div></div></div>
+  </div>
+
   <!-- SUPRIMENTOS -->
   <div class="view-section" id="view-suprimentos">
     <div class="header">
@@ -280,6 +296,36 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
     </div>
     <div class="card" id="panelMateriais"><div id="materiaisTable"><div class="loading">Carregando...</div></div></div>
     <div class="card hidden" id="panelMovimentacoes"><div id="movimentacoesTable"><div class="loading">Carregando...</div></div></div>
+  </div>
+
+  <!-- DESPESAS -->
+  <div class="view-section" id="view-despesas">
+    <div class="header">
+      <div><h1>Despesas</h1><p>Lancamento de gastos gerais (mao de obra, terceiros, notas fiscais)</p></div>
+      <div class="header-right"><button class="btn btn-primary" onclick="openExpenseModal()">+ Nova Despesa</button></div>
+    </div>
+    <div class="card"><div id="despesasTable"><div class="loading">Carregando...</div></div></div>
+  </div>
+
+  <!-- RISCOS E PENDENCIAS -->
+  <div class="view-section" id="view-riscos">
+    <div class="header">
+      <div><h1>Riscos e Pendencias</h1><p>Registro e acompanhamento de riscos e pendencias por projeto</p></div>
+      <div class="header-right"><button class="btn btn-primary" onclick="openRiskModal()">+ Novo Registro</button></div>
+    </div>
+    <div class="card"><div id="riscosTable"><div class="loading">Carregando...</div></div></div>
+  </div>
+
+  <!-- DOCUMENTOS -->
+  <div class="view-section" id="view-documentos">
+    <div class="header">
+      <div><h1>Documentos</h1><p>Arquivo digital do projeto - contratos, plantas, fotos e relatorios</p></div>
+      <div class="header-right">
+        <select class="input" id="docProjectSelect" style="margin-bottom:0;width:200px;"></select>
+        <label class="file-input-label">📎 Enviar Arquivo<input type="file" style="display:none" onchange="uploadDocument(this)"></label>
+      </div>
+    </div>
+    <div class="card"><div id="documentosTable"><div class="loading">Carregando...</div></div></div>
   </div>
 
   <!-- COMUNICACAO -->
@@ -350,6 +396,17 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
     </div>
   </div>
 
+  <!-- ENCERRAMENTO -->
+  <div class="view-section" id="view-encerramento">
+    <div class="header">
+      <div><h1>Encerramento</h1><p>Relatorio final de obra (fisico + financeiro) e arquivamento</p></div>
+      <div class="header-right">
+        <select class="input" id="closeProjectSelect" style="margin-bottom:0;width:220px;" onchange="loadEncerramentoDetalhe()"></select>
+      </div>
+    </div>
+    <div class="card" id="encerramentoCard"><div class="loading">Selecione um projeto</div></div>
+  </div>
+
   <!-- EQUIPE -->
   <div class="view-section" id="view-equipe">
     <div class="header">
@@ -403,6 +460,8 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 </select>
 <label class="field">Responsavel</label>
 <input id="inputResponsible" type="text" class="input">
+<label class="field">Data de Inicio</label>
+<input id="inputStartDate" type="date" class="input">
 <label class="field">Prazo</label>
 <input id="inputDeadline" type="date" class="input">
 <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
@@ -422,7 +481,9 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <label class="field">Descricao</label>
 <textarea id="taskDesc" class="input" rows="2" style="resize:vertical;"></textarea>
 <label class="field">Projeto</label>
-<select id="taskProject" class="input"></select>
+<select id="taskProject" class="input" onchange="fillTaskParentSelect(this.value, null)"></select>
+<label class="field">Tarefa Pai (EAP - opcional)</label>
+<select id="taskParent" class="input"><option value="">Nenhuma (tarefa de topo)</option></select>
 <label class="field">Status</label>
 <select id="taskStatus" class="input">
 <option value="pending">Pendente</option>
@@ -437,8 +498,15 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 </select>
 <label class="field">Responsavel</label>
 <select id="taskAssignee" class="input"><option value="">Sem responsavel</option></select>
+<label class="field">Data de Inicio</label>
+<input id="taskStartDate" type="date" class="input">
 <label class="field">Prazo</label>
 <input id="taskDeadline" type="date" class="input">
+<label class="field">Avanco fisico (%)</label>
+<input id="taskProgress" type="number" min="0" max="100" class="input" value="0">
+<label class="field">Horas trabalhadas</label>
+<input id="taskHours" type="number" min="0" class="input" value="0">
+<label class="field" style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="taskMilestone" style="width:auto;margin:0;"> Marcar como Marco (milestone)</label>
 <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
 <button class="btn btn-secondary" onclick="closeModal('taskModal')">Cancelar</button>
 <button class="btn btn-primary" onclick="saveTask()">Salvar</button>
@@ -510,6 +578,73 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
 <button class="btn btn-secondary" onclick="closeModal('movementModal')">Cancelar</button>
 <button class="btn btn-primary" onclick="saveMovement()">Registrar</button>
+</div>
+</div>
+</div>
+
+<!-- MODAL DESPESA -->
+<div class="modal-overlay" id="expenseModal">
+<div class="modal-box">
+<h2 style="margin-bottom:20px;">Nova Despesa</h2>
+<div class="error" id="expenseError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+<label class="field">Projeto</label>
+<select id="expenseProject" class="input"></select>
+<label class="field">Descricao</label>
+<input id="expenseDesc" type="text" class="input" placeholder="Ex: Pagamento equipe terceirizada">
+<label class="field">Categoria</label>
+<input id="expenseCategory" type="text" class="input" placeholder="Ex: Mao de obra, Nota fiscal, Frete">
+<label class="field">Valor (R$)</label>
+<input id="expenseAmount" type="number" class="input">
+<label class="field">Data</label>
+<input id="expenseDate" type="date" class="input">
+<label class="field">Responsavel</label>
+<input id="expenseResponsible" type="text" class="input">
+<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
+<button class="btn btn-secondary" onclick="closeModal('expenseModal')">Cancelar</button>
+<button class="btn btn-primary" onclick="saveExpense()">Salvar</button>
+</div>
+</div>
+</div>
+
+<!-- MODAL RISCO/PENDENCIA -->
+<div class="modal-overlay" id="riskModal">
+<div class="modal-box">
+<h2 style="margin-bottom:20px;">Novo Registro</h2>
+<div class="error" id="riskError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+<label class="field">Projeto</label>
+<select id="riskProject" class="input"></select>
+<label class="field">Tipo</label>
+<select id="riskType" class="input">
+<option value="risco">Risco</option>
+<option value="pendencia">Pendencia</option>
+</select>
+<label class="field">Titulo</label>
+<input id="riskTitle" type="text" class="input">
+<label class="field">Descricao</label>
+<textarea id="riskDesc" class="input" rows="2" style="resize:vertical;"></textarea>
+<label class="field">Probabilidade (para riscos)</label>
+<select id="riskProbability" class="input">
+<option value="">-</option>
+<option value="baixa">Baixa</option>
+<option value="media">Media</option>
+<option value="alta">Alta</option>
+</select>
+<label class="field">Impacto</label>
+<select id="riskImpact" class="input">
+<option value="">-</option>
+<option value="baixo">Baixo</option>
+<option value="medio">Medio</option>
+<option value="alto">Alto</option>
+</select>
+<label class="field">Status</label>
+<select id="riskStatus" class="input">
+<option value="aberto">Aberto</option>
+<option value="mitigado">Mitigado</option>
+<option value="encerrado">Encerrado</option>
+</select>
+<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
+<button class="btn btn-secondary" onclick="closeModal('riskModal')">Cancelar</button>
+<button class="btn btn-primary" onclick="saveRisk()">Salvar</button>
 </div>
 </div>
 </div>
@@ -617,11 +752,16 @@ function showView(view) {
   if (view === 'visaogeral') loadDashboard();
   else if (view === 'projetos') loadProjetosView();
   else if (view === 'tarefas') loadKanban();
+  else if (view === 'eap') loadEapView();
   else if (view === 'suprimentos') loadSuprimentosView();
+  else if (view === 'despesas') loadDespesasView();
+  else if (view === 'riscos') loadRiscosView();
+  else if (view === 'documentos') loadDocumentosView();
   else if (view === 'comunicacao') loadComunicacaoView();
   else if (view === 'calendario') loadCalendarioView();
   else if (view === 'orcamento') loadOrcamentoView();
   else if (view === 'relatorios') loadRelatoriosView();
+  else if (view === 'encerramento') loadEncerramentoView();
   else if (view === 'equipe') loadEquipeView();
   else if (view === 'configuracoes') loadConfiguracoesView();
 }
@@ -739,6 +879,7 @@ function openProjectModal() {
   document.getElementById('inputSpent').value = '';
   document.getElementById('inputStatus').value = 'active';
   document.getElementById('inputResponsible').value = '';
+  document.getElementById('inputStartDate').value = '';
   document.getElementById('inputDeadline').value = '';
   document.getElementById('projectModal').style.display = 'flex';
 }
@@ -754,6 +895,7 @@ function editProject(id) {
   document.getElementById('inputSpent').value = p.spent || '';
   document.getElementById('inputStatus').value = p.status || 'active';
   document.getElementById('inputResponsible').value = p.responsible || '';
+  document.getElementById('inputStartDate').value = p.startDate ? p.startDate.substring(0, 10) : '';
   document.getElementById('inputDeadline').value = p.deadline ? p.deadline.substring(0, 10) : '';
   document.getElementById('projectModal').style.display = 'flex';
 }
@@ -765,11 +907,12 @@ async function saveProject() {
   const spent = parseFloat(document.getElementById('inputSpent').value) || 0;
   const status = document.getElementById('inputStatus').value;
   const responsible = document.getElementById('inputResponsible').value;
+  const startDate = document.getElementById('inputStartDate').value;
   const deadline = document.getElementById('inputDeadline').value;
   const error = document.getElementById('projectError');
   if (!name) { error.textContent = 'Nome do projeto e obrigatorio'; error.style.display = 'block'; return; }
   error.style.display = 'none';
-  const body = { name, description, budget, spent, status, responsible, deadline: deadline || undefined };
+  const body = { name, description, budget, spent, status, responsible, startDate: startDate || undefined, deadline: deadline || undefined };
   try {
     const url = editingProjectId ? API + '/api/v1/projects/' + editingProjectId : API + '/api/v1/projects';
     const method = editingProjectId ? 'PUT' : 'POST';
@@ -861,8 +1004,9 @@ function renderKanbanColumn(status, containerId, countId, tasks) {
   c.innerHTML = filtered.map(t => {
     const prioLabel = { low: 'Baixa', medium: 'Media', high: 'Alta' }[t.priority] || t.priority;
     return '<div class="kanban-card" draggable="true" ondragstart="onKanbanDragStart(event, \'' + t.id + '\')" onclick="editTask(\'' + t.id + '\')">'
-      + '<div class="kc-title">' + t.title + '</div>'
+      + '<div class="kc-title">' + (t.isMilestone ? '⭐ ' : '') + t.title + '</div>'
       + '<div class="kc-meta">' + (t.project ? t.project.name : '') + ' &middot; ' + prioLabel + (t.assignee ? ' &middot; ' + t.assignee.name : '') + (t.deadline ? ' &middot; ' + fmtDate(t.deadline) : '') + '</div>'
+      + '<div class="cost-track" style="margin-top:6px;height:6px;"><div class="cost-fill cost-fill-blue" style="width:' + (t.progress || 0) + '%"></div></div>'
       + '</div>';
   }).join('');
 }
@@ -894,12 +1038,23 @@ async function openTaskModal() {
   document.getElementById('taskTitle').value = '';
   document.getElementById('taskDesc').value = '';
   fillTaskProjectSelect(null);
+  fillTaskParentSelect(null, null);
   await loadUsersCache();
   fillTaskAssigneeSelect(null);
   document.getElementById('taskStatus').value = 'pending';
   document.getElementById('taskPriority').value = 'medium';
+  document.getElementById('taskStartDate').value = '';
   document.getElementById('taskDeadline').value = '';
+  document.getElementById('taskProgress').value = 0;
+  document.getElementById('taskHours').value = 0;
+  document.getElementById('taskMilestone').checked = false;
   document.getElementById('taskModal').style.display = 'flex';
+}
+
+function fillTaskParentSelect(projectId, selectedId) {
+  const sel = document.getElementById('taskParent');
+  const options = (window._cachedTasks || []).filter(t => (!projectId || t.projectId === projectId) && t.id !== editingTaskId);
+  sel.innerHTML = '<option value="">Nenhuma (tarefa de topo)</option>' + options.map(t => '<option value="' + t.id + '"' + (t.id === selectedId ? ' selected' : '') + '>' + t.title + '</option>').join('');
 }
 
 async function editTask(id) {
@@ -910,11 +1065,16 @@ async function editTask(id) {
   document.getElementById('taskTitle').value = t.title || '';
   document.getElementById('taskDesc').value = t.description || '';
   fillTaskProjectSelect(t.projectId);
+  fillTaskParentSelect(t.projectId, t.parentId);
   await loadUsersCache();
   fillTaskAssigneeSelect(t.assigneeId);
   document.getElementById('taskStatus').value = t.status || 'pending';
   document.getElementById('taskPriority').value = t.priority || 'medium';
+  document.getElementById('taskStartDate').value = t.startDate ? t.startDate.substring(0, 10) : '';
   document.getElementById('taskDeadline').value = t.deadline ? t.deadline.substring(0, 10) : '';
+  document.getElementById('taskProgress').value = t.progress || 0;
+  document.getElementById('taskHours').value = t.hoursLogged || 0;
+  document.getElementById('taskMilestone').checked = !!t.isMilestone;
   document.getElementById('taskModal').style.display = 'flex';
 }
 
@@ -925,12 +1085,17 @@ async function saveTask() {
   const status = document.getElementById('taskStatus').value;
   const priority = document.getElementById('taskPriority').value;
   const assigneeId = document.getElementById('taskAssignee').value;
+  const parentId = document.getElementById('taskParent').value;
+  const startDate = document.getElementById('taskStartDate').value;
   const deadline = document.getElementById('taskDeadline').value;
+  const progress = document.getElementById('taskProgress').value;
+  const hoursLogged = document.getElementById('taskHours').value;
+  const isMilestone = document.getElementById('taskMilestone').checked;
   const error = document.getElementById('taskError');
   if (!title) { error.textContent = 'Titulo e obrigatorio'; error.style.display = 'block'; return; }
   if (!projectId) { error.textContent = 'Selecione um projeto'; error.style.display = 'block'; return; }
   error.style.display = 'none';
-  const body = { title, description, status, priority, assigneeId: assigneeId || null, deadline: deadline || undefined };
+  const body = { title, description, status, priority, assigneeId: assigneeId || null, parentId: parentId || null, startDate: startDate || undefined, deadline: deadline || undefined, progress, hoursLogged, isMilestone };
   if (!editingTaskId) body.projectId = projectId;
   try {
     const url = editingTaskId ? API + '/api/v1/tasks/' + editingTaskId : API + '/api/v1/tasks';
@@ -1100,6 +1265,289 @@ async function deleteMovement(id) {
   await fetch(API + '/api/v1/movements/' + id, { method: 'DELETE', headers: apiHeaders() });
   loadMovimentacoesTable();
   loadMateriaisTable();
+}
+
+// ============ EAP / MARCOS ============
+async function loadEapView() {
+  if (!cachedProjects.length) {
+    const res = await fetch(API + '/api/v1/projects', { headers: apiHeaders() });
+    cachedProjects = await res.json();
+  }
+  const sel = document.getElementById('eapProjectSelect');
+  if (!sel.dataset.filled) {
+    sel.innerHTML = cachedProjects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+    sel.dataset.filled = '1';
+  }
+  const projectId = sel.value;
+  if (!projectId) { document.getElementById('eapTree').innerHTML = '<div class="loading">Cadastre um projeto primeiro</div>'; return; }
+  const res = await fetch(API + '/api/v1/tasks', { headers: apiHeaders() });
+  const allTasks = await res.json();
+  const tasks = allTasks.filter(t => t.projectId === projectId);
+  window._cachedTasks = allTasks;
+  const roots = tasks.filter(t => !t.parentId);
+  const c = document.getElementById('eapTree');
+  if (!roots.length) { c.innerHTML = '<div class="loading">Nenhuma tarefa neste projeto</div>'; return; }
+  function renderNode(t, depth) {
+    const children = tasks.filter(x => x.parentId === t.id);
+    const statusLabel = { pending: 'Pendente', in_progress: 'Em andamento', done: 'Concluida' }[t.status] || t.status;
+    let html = '<div style="margin-left:' + (depth * 24) + 'px;padding:8px 0;border-bottom:1px solid #f3f4f6;display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="editTask(\'' + t.id + '\')">'
+      + '<span>' + (t.isMilestone ? '⭐ ' : (depth > 0 ? '↳ ' : '')) + '<strong>' + t.title + '</strong> <span style="color:#6b7280;font-size:12px;">(' + statusLabel + ' - ' + (t.progress || 0) + '%)</span></span>'
+      + '</div>';
+    children.forEach(ch => { html += renderNode(ch, depth + 1); });
+    return html;
+  }
+  c.innerHTML = roots.map(r => renderNode(r, 0)).join('');
+}
+
+// ============ DESPESAS ============
+async function loadDespesasView() {
+  if (!cachedProjects.length) {
+    const res = await fetch(API + '/api/v1/projects', { headers: apiHeaders() });
+    cachedProjects = await res.json();
+  }
+  const c = document.getElementById('despesasTable');
+  try {
+    const res = await fetch(API + '/api/v1/expenses', { headers: apiHeaders() });
+    const expenses = await res.json();
+    window._cachedExpenses = expenses;
+    if (!expenses.length) { c.innerHTML = '<div class="loading">Nenhuma despesa lancada</div>'; return; }
+    let h = '<table class="table-projects"><thead><tr><th>Data</th><th>Descricao</th><th>Categoria</th><th>Valor</th><th>Projeto</th><th>Responsavel</th><th>Acoes</th></tr></thead><tbody>';
+    expenses.forEach(e => {
+      h += '<tr><td>' + fmtDate(e.date) + '</td><td>' + e.description + '</td><td>' + (e.category || '-') + '</td><td>' + fmtMoney(e.amount) + '</td><td>' + (e.project ? e.project.name : '-') + '</td><td>' + (e.responsible || '-') + '</td>'
+        + '<td><button class="btn btn-sm btn-danger" onclick="deleteExpense(\'' + e.id + '\')">Excluir</button></td></tr>';
+    });
+    h += '</tbody></table>';
+    c.innerHTML = h;
+  } catch (e) { c.innerHTML = '<div class="loading">Erro ao carregar despesas</div>'; }
+}
+
+function openExpenseModal() {
+  document.getElementById('expenseProject').innerHTML = cachedProjects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+  document.getElementById('expenseDesc').value = '';
+  document.getElementById('expenseCategory').value = '';
+  document.getElementById('expenseAmount').value = '';
+  document.getElementById('expenseDate').value = new Date().toISOString().substring(0, 10);
+  document.getElementById('expenseResponsible').value = '';
+  document.getElementById('expenseModal').style.display = 'flex';
+}
+
+async function saveExpense() {
+  const projectId = document.getElementById('expenseProject').value;
+  const description = document.getElementById('expenseDesc').value;
+  const category = document.getElementById('expenseCategory').value;
+  const amount = document.getElementById('expenseAmount').value;
+  const date = document.getElementById('expenseDate').value;
+  const responsible = document.getElementById('expenseResponsible').value;
+  const error = document.getElementById('expenseError');
+  if (!description || !amount || !projectId) { error.textContent = 'Descricao, valor e projeto sao obrigatorios'; error.style.display = 'block'; return; }
+  error.style.display = 'none';
+  try {
+    const res = await fetch(API + '/api/v1/expenses', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ projectId, description, category, amount, date, responsible }) });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+    closeModal('expenseModal');
+    loadDespesasView();
+  } catch (e) { error.textContent = e.message; error.style.display = 'block'; }
+}
+
+async function deleteExpense(id) {
+  if (!confirm('Excluir esta despesa?')) return;
+  await fetch(API + '/api/v1/expenses/' + id, { method: 'DELETE', headers: apiHeaders() });
+  loadDespesasView();
+}
+
+// ============ RISCOS E PENDENCIAS ============
+async function loadRiscosView() {
+  if (!cachedProjects.length) {
+    const res = await fetch(API + '/api/v1/projects', { headers: apiHeaders() });
+    cachedProjects = await res.json();
+  }
+  const c = document.getElementById('riscosTable');
+  try {
+    const res = await fetch(API + '/api/v1/risks', { headers: apiHeaders() });
+    const risks = await res.json();
+    if (!risks.length) { c.innerHTML = '<div class="loading">Nenhum risco ou pendencia registrado</div>'; return; }
+    let h = '<table class="table-projects"><thead><tr><th>Tipo</th><th>Titulo</th><th>Projeto</th><th>Probabilidade</th><th>Impacto</th><th>Status</th><th>Acoes</th></tr></thead><tbody>';
+    risks.forEach(r => {
+      h += '<tr><td>' + (r.type === 'risco' ? 'Risco' : 'Pendencia') + '</td><td><strong>' + r.title + '</strong></td><td>' + (r.project ? r.project.name : '-') + '</td><td>' + (r.probability || '-') + '</td><td>' + (r.impact || '-') + '</td><td>' + r.status + '</td>'
+        + '<td><button class="btn btn-sm btn-secondary" onclick="cycleRiskStatus(\'' + r.id + '\', \'' + r.status + '\')">Avancar Status</button> <button class="btn btn-sm btn-danger" onclick="deleteRisk(\'' + r.id + '\')">Excluir</button></td></tr>';
+    });
+    h += '</tbody></table>';
+    c.innerHTML = h;
+  } catch (e) { c.innerHTML = '<div class="loading">Erro ao carregar</div>'; }
+}
+
+function openRiskModal() {
+  document.getElementById('riskProject').innerHTML = cachedProjects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+  document.getElementById('riskType').value = 'risco';
+  document.getElementById('riskTitle').value = '';
+  document.getElementById('riskDesc').value = '';
+  document.getElementById('riskProbability').value = '';
+  document.getElementById('riskImpact').value = '';
+  document.getElementById('riskStatus').value = 'aberto';
+  document.getElementById('riskModal').style.display = 'flex';
+}
+
+async function saveRisk() {
+  const projectId = document.getElementById('riskProject').value;
+  const type = document.getElementById('riskType').value;
+  const title = document.getElementById('riskTitle').value;
+  const description = document.getElementById('riskDesc').value;
+  const probability = document.getElementById('riskProbability').value;
+  const impact = document.getElementById('riskImpact').value;
+  const status = document.getElementById('riskStatus').value;
+  const error = document.getElementById('riskError');
+  if (!title || !projectId) { error.textContent = 'Titulo e projeto sao obrigatorios'; error.style.display = 'block'; return; }
+  error.style.display = 'none';
+  try {
+    const res = await fetch(API + '/api/v1/risks', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ projectId, type, title, description, probability, impact, status }) });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+    closeModal('riskModal');
+    loadRiscosView();
+  } catch (e) { error.textContent = e.message; error.style.display = 'block'; }
+}
+
+async function cycleRiskStatus(id, current) {
+  const next = current === 'aberto' ? 'mitigado' : current === 'mitigado' ? 'encerrado' : 'aberto';
+  await fetch(API + '/api/v1/risks/' + id, { method: 'PUT', headers: apiHeaders(), body: JSON.stringify({ status: next }) });
+  loadRiscosView();
+}
+
+async function deleteRisk(id) {
+  if (!confirm('Excluir este registro?')) return;
+  await fetch(API + '/api/v1/risks/' + id, { method: 'DELETE', headers: apiHeaders() });
+  loadRiscosView();
+}
+
+// ============ DOCUMENTOS ============
+async function loadDocumentosView() {
+  if (!cachedProjects.length) {
+    const res = await fetch(API + '/api/v1/projects', { headers: apiHeaders() });
+    cachedProjects = await res.json();
+  }
+  document.getElementById('docProjectSelect').innerHTML = cachedProjects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+  const c = document.getElementById('documentosTable');
+  try {
+    const res = await fetch(API + '/api/v1/documents', { headers: apiHeaders() });
+    const docs = await res.json();
+    if (!docs.length) { c.innerHTML = '<div class="loading">Nenhum documento enviado</div>'; return; }
+    let h = '<table class="table-projects"><thead><tr><th>Arquivo</th><th>Projeto</th><th>Enviado em</th><th>Acoes</th></tr></thead><tbody>';
+    docs.forEach(d => {
+      h += '<tr><td><strong>' + d.filename + '</strong></td><td>' + d.projectName + '</td><td>' + fmtDate(d.createdAt) + '</td>'
+        + '<td><button class="btn btn-sm btn-secondary" onclick="downloadDocument(\'' + d.id + '\')">Baixar</button> <button class="btn btn-sm btn-danger" onclick="deleteDocument(\'' + d.id + '\')">Excluir</button></td></tr>';
+    });
+    h += '</tbody></table>';
+    c.innerHTML = h;
+  } catch (e) { c.innerHTML = '<div class="loading">Erro ao carregar documentos</div>'; }
+}
+
+function uploadDocument(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const projectId = document.getElementById('docProjectSelect').value;
+  if (!projectId) { alert('Selecione um projeto primeiro'); input.value = ''; return; }
+  if (file.size > 4 * 1024 * 1024) { alert('Arquivo maior que 4MB nao suportado.'); input.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const base64 = e.target.result.split(',')[1];
+    try {
+      const res = await fetch(API + '/api/v1/documents', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ filename: file.name, mimeType: file.type, data: base64, projectId }) });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+      loadDocumentosView();
+    } catch (err) { alert('Erro ao enviar arquivo: ' + err.message); }
+    input.value = '';
+  };
+  reader.readAsDataURL(file);
+}
+
+async function downloadDocument(id) {
+  const res = await fetch(API + '/api/v1/documents/' + id + '/download', { headers: apiHeaders() });
+  const d = await res.json();
+  const link = document.createElement('a');
+  link.href = 'data:' + d.mimeType + ';base64,' + d.data;
+  link.download = d.filename;
+  link.click();
+}
+
+async function deleteDocument(id) {
+  if (!confirm('Excluir este documento?')) return;
+  await fetch(API + '/api/v1/documents/' + id, { method: 'DELETE', headers: apiHeaders() });
+  loadDocumentosView();
+}
+
+// ============ ENCERRAMENTO ============
+async function loadEncerramentoView() {
+  if (!cachedProjects.length) {
+    const res = await fetch(API + '/api/v1/projects', { headers: apiHeaders() });
+    cachedProjects = await res.json();
+  }
+  const sel = document.getElementById('closeProjectSelect');
+  sel.innerHTML = cachedProjects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+  if (cachedProjects.length) loadEncerramentoDetalhe();
+}
+
+async function loadEncerramentoDetalhe() {
+  const projectId = document.getElementById('closeProjectSelect').value;
+  const card = document.getElementById('encerramentoCard');
+  if (!projectId) { card.innerHTML = '<div class="loading">Selecione um projeto</div>'; return; }
+  const [taskRes, expRes, riskRes] = await Promise.all([
+    fetch(API + '/api/v1/tasks', { headers: apiHeaders() }),
+    fetch(API + '/api/v1/expenses', { headers: apiHeaders() }),
+    fetch(API + '/api/v1/risks', { headers: apiHeaders() })
+  ]);
+  const allTasks = await taskRes.json();
+  const allExpenses = await expRes.json();
+  const allRisks = await riskRes.json();
+  const project = cachedProjects.find(p => p.id === projectId);
+  const tasks = allTasks.filter(t => t.projectId === projectId);
+  const expenses = allExpenses.filter(e => e.projectId === projectId);
+  const risks = allRisks.filter(r => r.projectId === projectId);
+  const avgProgress = tasks.length ? Math.round(tasks.reduce((s, t) => s + (t.progress || 0), 0) / tasks.length) : 0;
+  const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
+  const openRisks = risks.filter(r => r.status === 'aberto').length;
+
+  card.innerHTML = ''
+    + '<div class="summary-cards">'
+    + '<div class="kpi-card"><div class="kpi-value">' + avgProgress + '%</div><div class="kpi-label">AVANCO FISICO MEDIO</div></div>'
+    + '<div class="kpi-card"><div class="kpi-value">' + fmtMoney(project.budget) + '</div><div class="kpi-label">ORCAMENTO</div></div>'
+    + '<div class="kpi-card"><div class="kpi-value">' + fmtMoney((project.spent || 0) + totalExpenses) + '</div><div class="kpi-label">GASTO TOTAL (materiais + despesas)</div></div>'
+    + '<div class="kpi-card"><div class="kpi-value">' + openRisks + '</div><div class="kpi-label">RISCOS/PENDENCIAS ABERTOS</div></div>'
+    + '</div>'
+    + '<p style="font-size:13px;color:#374151;margin-bottom:16px;">Tarefas: ' + tasks.filter(t => t.status === 'done').length + ' de ' + tasks.length + ' concluidas. Status atual do projeto: <strong>' + project.status + '</strong></p>'
+    + '<div style="display:flex;gap:12px;">'
+    + '<button class="btn btn-secondary" onclick="exportClosureReport(\'' + projectId + '\')">📤 Exportar Relatorio Final (Excel)</button>'
+    + (project.status !== 'completed' ? '<button class="btn btn-primary" onclick="finalizarProjeto(\'' + projectId + '\')">🏁 Finalizar Projeto</button>' : '<span class="kpi-badge badge-blue">Projeto ja encerrado</span>')
+    + '</div>';
+}
+
+async function finalizarProjeto(projectId) {
+  if (!confirm('Finalizar este projeto? O status sera marcado como Concluido.')) return;
+  await fetch(API + '/api/v1/projects/' + projectId, { method: 'PUT', headers: apiHeaders(), body: JSON.stringify({ status: 'completed' }) });
+  const res = await fetch(API + '/api/v1/projects', { headers: apiHeaders() });
+  cachedProjects = await res.json();
+  loadEncerramentoDetalhe();
+}
+
+async function exportClosureReport(projectId) {
+  const [taskRes, expRes, riskRes] = await Promise.all([
+    fetch(API + '/api/v1/tasks', { headers: apiHeaders() }),
+    fetch(API + '/api/v1/expenses', { headers: apiHeaders() }),
+    fetch(API + '/api/v1/risks', { headers: apiHeaders() })
+  ]);
+  const allTasks = await taskRes.json();
+  const allExpenses = await expRes.json();
+  const allRisks = await riskRes.json();
+  const project = cachedProjects.find(p => p.id === projectId);
+  const tasks = allTasks.filter(t => t.projectId === projectId);
+  const expenses = allExpenses.filter(e => e.projectId === projectId);
+  const risks = allRisks.filter(r => r.projectId === projectId);
+
+  const wb = XLSX.utils.book_new();
+  const resumo = [{ Projeto: project.name, Status: project.status, Orcamento: project.budget, Gasto: project.spent, Inicio: project.startDate ? project.startDate.substring(0, 10) : '', Prazo: project.deadline ? project.deadline.substring(0, 10) : '' }];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumo), 'Resumo');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(tasks.map(t => ({ Titulo: t.title, Status: t.status, Avanco: t.progress, Horas: t.hoursLogged, Prazo: t.deadline ? t.deadline.substring(0, 10) : '' }))), 'Tarefas');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(expenses.map(e => ({ Descricao: e.description, Categoria: e.category, Valor: e.amount, Data: e.date ? e.date.substring(0, 10) : '' }))), 'Despesas');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(risks.map(r => ({ Tipo: r.type, Titulo: r.title, Status: r.status, Impacto: r.impact }))), 'Riscos');
+  XLSX.writeFile(wb, 'relatorio_final_' + project.name.replace(/[^a-z0-9]/gi, '_') + '.xlsx');
 }
 
 // ============ COMUNICACAO ============
