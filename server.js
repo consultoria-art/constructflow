@@ -38,7 +38,6 @@ async function runAutomation(organizationId) {
   let projectsMarkedDelayed = 0;
 
   for (const p of projects) {
-    // Desvio de prazo: prazo vencido e projeto ainda nao concluido
     if (p.deadline && new Date(p.deadline) < now && p.status !== 'completed' && p.status !== 'delayed') {
       await prisma.project.update({ where: { id: p.id }, data: { status: 'delayed' } });
       projectsMarkedDelayed++;
@@ -53,7 +52,6 @@ async function runAutomation(organizationId) {
       }
     }
 
-    // Desvio de custo: gasto maior que orcamento
     if (p.budget > 0 && p.spent > p.budget) {
       const title = 'Desvio de custo: ' + p.name;
       const exists = await prisma.alert.findFirst({ where: { projectId: p.id, title, read: false } });
@@ -65,10 +63,26 @@ async function runAutomation(organizationId) {
     }
   }
 
+  const materials = await prisma.material.findMany({ where: { organizationId }, include: { movements: true } });
+  for (const m of materials) {
+    const entradas = m.movements.filter(mv => mv.type === 'entrada').reduce((s, mv) => s + mv.quantity, 0);
+    const saidas = m.movements.filter(mv => mv.type === 'saida').reduce((s, mv) => s + mv.quantity, 0);
+    if (saidas > entradas) {
+      const title = 'Desvio de suprimento: ' + m.name;
+      const projectIdForAlert = m.movements.find(mv => mv.projectId)?.projectId;
+      if (projectIdForAlert) {
+        const exists = await prisma.alert.findFirst({ where: { projectId: projectIdForAlert, title, read: false } });
+        if (!exists) {
+          await prisma.alert.create({ data: { projectId: projectIdForAlert, title, message: 'Saida de ' + m.name + ' (' + saidas + ' ' + m.unit + ') maior que entrada (' + entradas + ' ' + m.unit + ').', type: 'alert' } });
+          alertsCreated++;
+        }
+      }
+    }
+  }
+
   return { alertsCreated, projectsMarkedDelayed };
 }
 
-// ============ PROJECAO DE MEDIO/LONGO PRAZO ============
 function calcProjecoes(projects) {
   const now = new Date();
   return projects
@@ -76,7 +90,7 @@ function calcProjecoes(projects) {
     .map(p => {
       const diasDecorridos = Math.max(1, Math.round((now - new Date(p.createdAt)) / (1000 * 60 * 60 * 24)));
       const ritmoDiario = p.spent / diasDecorridos;
-      let diasAteFinal = 30; // padrao se nao houver prazo
+      let diasAteFinal = 30;
       if (p.deadline) {
         diasAteFinal = Math.max(1, Math.round((new Date(p.deadline) - new Date(p.createdAt)) / (1000 * 60 * 60 * 24)));
       }
@@ -204,6 +218,21 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 201, { created });
     }
 
+    if (req.url.startsWith('/api/v1/projects/') && req.url.endsWith('/comments') && req.method === 'GET') {
+      const projectId = req.url.split('/')[4];
+      const comments = await prisma.comment.findMany({ where: { projectId }, include: { user: true }, orderBy: { createdAt: 'asc' } });
+      return sendJSON(res, 200, comments.map(c => ({ id: c.id, message: c.message, createdAt: c.createdAt, userName: c.user.name, userId: c.userId })));
+    }
+
+    if (req.url.startsWith('/api/v1/projects/') && req.url.endsWith('/comments') && req.method === 'POST') {
+      const projectId = req.url.split('/')[4];
+      const { message } = await parseBody(req);
+      if (!message) return sendJSON(res, 400, { error: 'Mensagem vazia' });
+      const comment = await prisma.comment.create({ data: { message, projectId, userId: user.userId } });
+      const withUser = await prisma.comment.findUnique({ where: { id: comment.id }, include: { user: true } });
+      return sendJSON(res, 201, { id: withUser.id, message: withUser.message, createdAt: withUser.createdAt, userName: withUser.user.name, userId: withUser.userId });
+    }
+
     if (req.url.startsWith('/api/v1/projects/') && req.method === 'PUT') {
       const id = req.url.split('/')[4];
       const data = await parseBody(req);
@@ -218,6 +247,8 @@ const server = http.createServer(async (req, res) => {
       const id = req.url.split('/')[4];
       await prisma.task.deleteMany({ where: { projectId: id } });
       await prisma.alert.deleteMany({ where: { projectId: id } });
+      await prisma.comment.deleteMany({ where: { projectId: id } });
+      await prisma.stockMovement.deleteMany({ where: { projectId: id } });
       await prisma.project.delete({ where: { id } });
       return sendJSON(res, 200, { success: true });
     }
@@ -330,6 +361,60 @@ const server = http.createServer(async (req, res) => {
       if (!name) return sendJSON(res, 400, { error: 'Nome e obrigatorio' });
       const org = await prisma.organization.update({ where: { id: user.organizationId }, data: { name } });
       return sendJSON(res, 200, { id: org.id, name: org.name, slug: org.slug });
+    }
+
+    // ============ MATERIAIS (SUPRIMENTOS) ============
+    if (req.url === '/api/v1/materials' && req.method === 'GET') {
+      const materials = await prisma.material.findMany({ where: { organizationId: user.organizationId }, include: { movements: true }, orderBy: { name: 'asc' } });
+      const withBalance = materials.map(m => {
+        const entradas = m.movements.filter(mv => mv.type === 'entrada').reduce((s, mv) => s + mv.quantity, 0);
+        const saidas = m.movements.filter(mv => mv.type === 'saida').reduce((s, mv) => s + mv.quantity, 0);
+        return { id: m.id, name: m.name, unit: m.unit, entradas, saidas, saldo: entradas - saidas, desvio: saidas > entradas };
+      });
+      return sendJSON(res, 200, withBalance);
+    }
+
+    if (req.url === '/api/v1/materials' && req.method === 'POST') {
+      const { name, unit } = await parseBody(req);
+      if (!name) return sendJSON(res, 400, { error: 'Nome do material e obrigatorio' });
+      const material = await prisma.material.create({ data: { name, unit: unit || 'un', organizationId: user.organizationId } });
+      return sendJSON(res, 201, material);
+    }
+
+    if (req.url.startsWith('/api/v1/materials/') && req.method === 'DELETE') {
+      const id = req.url.split('/')[4];
+      await prisma.stockMovement.deleteMany({ where: { materialId: id } });
+      await prisma.material.delete({ where: { id } });
+      return sendJSON(res, 200, { success: true });
+    }
+
+    if (req.url === '/api/v1/movements' && req.method === 'GET') {
+      const movements = await prisma.stockMovement.findMany({ where: { material: { organizationId: user.organizationId } }, include: { material: true, project: true }, orderBy: { createdAt: 'desc' } });
+      return sendJSON(res, 200, movements);
+    }
+
+    if (req.url === '/api/v1/movements' && req.method === 'POST') {
+      const { materialId, projectId, type, quantity, unitValue, notes, responsible } = await parseBody(req);
+      if (!materialId || !type || !quantity) return sendJSON(res, 400, { error: 'Material, tipo e quantidade sao obrigatorios' });
+      if (type !== 'entrada' && type !== 'saida') return sendJSON(res, 400, { error: 'Tipo deve ser entrada ou saida' });
+      const movement = await prisma.stockMovement.create({
+        data: {
+          materialId,
+          projectId: projectId || null,
+          type,
+          quantity: parseFloat(quantity),
+          unitValue: parseFloat(unitValue) || 0,
+          notes: notes || null,
+          responsible: responsible || null
+        }
+      });
+      return sendJSON(res, 201, movement);
+    }
+
+    if (req.url.startsWith('/api/v1/movements/') && req.method === 'DELETE') {
+      const id = req.url.split('/')[4];
+      await prisma.stockMovement.delete({ where: { id } });
+      return sendJSON(res, 200, { success: true });
     }
 
     return sendJSON(res, 404, { error: 'Rota nao encontrada' });
