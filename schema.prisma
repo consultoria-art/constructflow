@@ -28,6 +28,7 @@ model User {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
   comments       Comment[]
+  assignedTasks Task[]
 }
 model Project {
   id             String   @id @default(cuid())
@@ -53,7 +54,8 @@ model Task {
   description String?
   status      String   @default("pending")
   priority    String   @default("medium")
-  responsible String?
+  assigneeId  String?
+  assignee    User?    @relation(fields: [assigneeId], references: [id])
   deadline    DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
