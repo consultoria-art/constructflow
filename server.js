@@ -6,13 +6,13 @@ const prisma = new PrismaClient();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Configurações obrigatórias
+// Configurações Globais
 app.use(cors());
 app.use(express.json());
 
-// Rota inicial de diagnóstico
+// Rota de Diagnóstico Inicial
 app.get('/', (req, res) => {
-    res.json({ status: "OK", message: "Servidor ConstructFlow operando com módulo de produtos ativo!" });
+    res.json({ status: "OK", message: "Servidor ConstructFlow operando com modulo de produtos ativo!" });
 });
 
 // =========================================================================
@@ -46,7 +46,7 @@ app.post('/produtos', async (req, res) => {
     }
 });
 
-// Remover um produto (DELETE) - CORRIGIDO
+// Remover um produto (DELETE)
 app.delete('/produtos/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -59,7 +59,7 @@ app.delete('/produtos/:id', async (req, res) => {
     }
 });
 
-// Inicialização do servidor
+// Inicialização do Servidor
 app.listen(PORT, () => {
     console.log(`Servidor rodando com sucesso na porta ${PORT}`);
 });
