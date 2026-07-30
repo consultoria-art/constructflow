@@ -1,9 +1,21 @@
+
+Vou te passar o arquivo **completo e limpo** agora — você só precisa substituir no GitHub.
+
+1. Acesse: https://github.com/consultoria-art/constructflow/blob/main/server.js
+
+2. Clique no lápis ✏️, **selecione tudo** e **delete**
+
+3. Cole **exatamente** o código abaixo (sem formatação extra):
+```javascript
 const { PrismaClient } = require('@prisma/client');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 const prisma = new PrismaClient();
+const JWT_SECRET = process.env.JWT_SECRET || 'constructflow-secret';
 
 function sendJSON(res, status, data) {
   res.statusCode = status;
@@ -14,69 +26,165 @@ function sendJSON(res, status, data) {
 function parseBody(req) {
   return new Promise((resolve) => {
     let body = '';
-    req.on('data', chunk => body += chunk);
+    req.on('data', (c) => (body += c));
     req.on('end', () => {
-      try { resolve(JSON.parse(body)); } catch { resolve({}); }
+      try {
+        resolve(JSON.parse(body));
+      } catch {
+        resolve({});
+      }
     });
   });
 }
 
+function getUser(req) {
+  const auth = req.headers['authorization'];
+  if (!auth || !auth.startsWith('Bearer ')) return null;
+  try {
+    return jwt.verify(auth.split(' ')[1], JWT_SECRET);
+  } catch {
+    return null;
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204;
+    return res.end();
+  }
 
   try {
-    // Frontend
     if (req.url === '/' || req.url === '/index.html') {
       return fs.readFile(path.join(__dirname, 'index.html'), (err, data) => {
-        if (err) return sendJSON(res, 500, { error: 'Erro ao carregar página' });
+        if (err) return sendJSON(res, 500, { error: 'Erro' });
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.end(data);
       });
     }
 
-    // Health
     if (req.url === '/api/v1/health' && req.method === 'GET') {
-      return sendJSON(res, 200, { status: 'ok', version: '1.0.0', name: 'ConstructFlow API' });
+      return sendJSON(res, 200, { status: 'ok' });
     }
 
-    // Dashboard
-    if (req.url === '/api/v1/dashboard' && req.method === 'GET') {
-      const totalProjects = await prisma.project.count();
-      const delayedProjects = await prisma.project.count({ where: { status: 'delayed' } });
-      const projects = await prisma.project.findMany();
-      const totalBudget = projects.reduce((s, p) => s + (p.budget || 0), 0);
-      const totalSpent = projects.reduce((s, p) => s + (p.spent || 0), 0);
-      return sendJSON(res, 200, {
-        projetosAndamento: totalProjects,
-        atrasados: delayedProjects,
-        orcamentoVsGasto: totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0,
-        totalHoras: totalProjects * 80,
-        tarefasPendentes: 0
+    if (req.url === '/api/v1/auth/signup' && req.method === 'POST') {
+      const { name, email, password, organizationName } = await parseBody(req);
+        return sendJSON(res, 400, { error: 'Todos os campos sao obrigatorios' });
+      }
+      if (password.length < 6) {
+        return sendJSON(res, 400, { error: 'Senha deve ter no minimo 6 caracteres' });
+      }
+      const exist = await prisma.user.findUnique({ where: { email } });
+      if (exist) return sendJSON(res, 400, { error: 'Email ja cadastrado' });
+      const slug = organizationName.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 40);
+      const hash = await bcrypt.hash(password, 10);
+      const org = await prisma.organization.create({
+        data: {
+          name: organizationName,
+          slug,
+          users: {
+            create: { name, email, passwordHash: hash, role: 'admin' },
+          },
+        },
+        include: { users: true },
+      });
+      const token = jwt.sign(
+        { userId: org.users[0].id, email, organizationId: org.id, role: 'admin' },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+      return sendJSON(res, 201, {
+        token,
+        user: { id: org.users[0].id, name, email, role: 'admin' },
+        organization: { id: org.id, name: org.name, slug: org.slug },
       });
     }
 
-    // Listar projetos
+    if (req.url === '/api/v1/auth/login' && req.method === 'POST') {
+      const { email, password } = await parseBody(req);
+      if (!email || !password) {
+        return sendJSON(res, 400, { error: 'Email e senha obrigatorios' });
+      }
+      const user = await prisma.user.findUnique({
+        where: { email },
+        include: { organization: true },
+      });
+      if (!user) return sendJSON(res, 401, { error: 'Email ou senha invalidos' });
+      const valid = await bcrypt.compare(password, user.passwordHash);
+      if (!valid) return sendJSON(res, 401, { error: 'Email ou senha invalidos' });
+      if (!user.organization.active) {
+        return sendJSON(res, 403, { error: 'Conta desativada' });
+      }
+      const token = jwt.sign(
+        { userId: user.id, email, organizationId: user.organizationId, role: user.role },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+      return sendJSON(res, 200, {
+        token,
+        user: { id: user.id, name: user.name, email: user.email, role: user.role },
+        organization: { id: user.organization.id, name: user.organization.name, slug: user.organization.slug },
+      });
+    }
+
+    const user = getUser(req);
+    if (!user) return sendJSON(res, 401, { error: 'Token ausente' });
+
+    if (req.url === '/api/v1/auth/me' && req.method === 'GET') {
+      const u = await prisma.user.findUnique({
+        where: { id: user.userId },
+        include: { organization: true },
+      });
+      if (!u) return sendJSON(res, 404, { error: 'Usuario nao encontrado' });
+      return sendJSON(res, 200, {
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        organization: { id: u.organization.id, name: u.organization.name, slug: u.organization.slug },
+      });
+    }
+
+    if (req.url === '/api/v1/dashboard' && req.method === 'GET') {
+      const tp = await prisma.project.count({ where: { organizationId: user.organizationId } });
+      const td = await prisma.project.count({ where: { organizationId: user.organizationId, status: 'delayed' } });
+      const tt = await prisma.task.count({ where: { project: { organizationId: user.organizationId } } });
+      const tpen = await prisma.task.count({ where: { project: { organizationId: user.organizationId }, status: 'pending' } });
+      const projs = await prisma.project.findMany({ where: { organizationId: user.organizationId } });
+      const tb = projs.reduce((s, p) => s + (p.budget || 0), 0);
+      const ts = projs.reduce((s, p) => s + (p.spent || 0), 0);
+      return sendJSON(res, 200, {
+        projetosAndamento: tp,
+        atrasados: td,
+        orcamentoVsGasto: tb > 0 ? Math.round((ts / tb) * 100) : 0,
+        totalHoras: tt * 8,
+        tarefasPendentes: tpen,
+      });
+    }
+
     if (req.url === '/api/v1/projects' && req.method === 'GET') {
-      const projects = await prisma.project.findMany({ orderBy: { createdAt: 'desc' } });
+      const projects = await prisma.project.findMany({
+        where: { organizationId: user.organizationId },
+        include: { tasks: true, alerts: true },
+        orderBy: { createdAt: 'desc' },
+      });
       return sendJSON(res, 200, projects);
     }
 
-    // Criar projeto
     if (req.url === '/api/v1/projects' && req.method === 'POST') {
       const data = await parseBody(req);
+      data.organizationId = user.organizationId;
       const project = await prisma.project.create({ data });
       return sendJSON(res, 201, project);
     }
 
-    return sendJSON(res, 404, { error: 'Rota não encontrada' });
+    return sendJSON(res, 404, { error: 'Rota nao encontrada' });
   } catch (error) {
     return sendJSON(res, 500, { error: error.message });
   }
 });
 
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, '0.0.0.0', () => console.log(`ConstructFlow API rodando na porta ${PORT}`));
+server.listen(PORT, '0.0.0.0', () => console.log('OK: porta ' + PORT));
