@@ -1,156 +1,77 @@
-const { PrismaClient } = require('@prisma/client');
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-
-const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || 'constructflow-secret-change-in-production';
-
-// ─── MIDDLEWARE: extrair usuário do token ──────────────
-function getUserFromToken(req) {
-  const auth = req.headers['authorization'];
-  if (!auth || !auth.startsWith('Bearer ')) return null;
-  try {
-    return jwt.verify(auth.split(' ')[1], JWT_SECRET);
-  } catch {
-    return null;
-  }
-}
-
-// ─── HELPERS ───────────────────────────────────────────
-function sendJSON(res, status, data) {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json');
-  res.end(JSON.stringify(data));
-}
-
-function parseBody(req) {
-  return new Promise((resolve, reject) => {
-    let body = '';
-    req.on('data', chunk => body += chunk);
-    req.on('end', () => {
-      try { resolve(JSON.parse(body)); }
-      catch { reject(new Error('JSON inválido')); }
-    });
-  });
-}
-
-// ─── SERVER ────────────────────────────────────────────
-const server = http.createServer(async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-  if (req.method === 'OPTIONS') {
-    res.statusCode = 204;
-    return res.end();
-  }
-
-  try {
-    // ─── FRONTEND ──────────────────────────────────────
-    if (req.url === '/' || req.url === '/index.html') {
-      return fs.readFile(path.join(__dirname, 'index.html'), (err, data) => {
-        if (err) return sendJSON(res, 500, { error: 'Erro ao carregar página' });
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.end(data);
-      });
-    }
-
-    // ─── ROTAS PÚBLICAS ────────────────────────────────
-
-    // Health check
-    if (req.url === '/api/v1/health' && req.method === 'GET') {
-      return sendJSON(res, 200, {
-        status: 'ok',
-        version: '1.0.0',
-        name: 'ConstructFlow API',
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    // Signup (criar conta)
-    if (req.url === '/api/v1/auth/signup' && req.method === 'POST') {
-      const { name, email, password, organizationName } = await parseBody(req);
-
-      if (!name || !email || !password || !organizationName) {
-        return sendJSON(res, 400, { error: 'Todos os campos são obrigatórios' });
-      }
-      if (password.length < 6) {
-        return sendJSON(res, 400, { error: 'Senha deve ter no mínimo 6 caracteres' });
-      }
-
-      const existing = await prisma.user.findUnique({ where: { email } });
-      if (existing) {
-        return sendJSON(res, 400, { error: 'Email já cadastrado' });
-      }
-
-      const slug = organizationName.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 40);
-
-      const passwordHash = await bcrypt.hash(password, 10);
-
-      const org = await prisma.organization.create({
-        data: {
-          name: organizationName,
-          slug,
-          users: {
-            create: {
-              name,
-              email,
-              passwordHash,
-              role: 'admin'
-            }
-          }
-        },
-        include: { users: true }
-      });
-
-      const token = jwt.sign(
-        { userId: org.users[0].id, email, organizationId: org.id, role: 'admin' },
-        JWT_SECRET,
-        { expiresIn: '7d' }
-      );
-
-      return sendJSON(res, 201, {
-        token,
-        user: { id: org.users[0].id, name, email, role: 'admin' },
-        organization: { id: org.id, name: org.name, slug: org.slug }
-      });
-    }
-
-    // Login
-    if (req.url === '/api/v1/auth/login' && req.method === 'POST') {
-      const { email, password } = await parseBody(req);
-
-      if (!email || !password) {
-        return sendJSON(res, 400, { error: 'Email e senha são obrigatórios' });
-      }
-
-      const user = await prisma.user.findUnique({
-        where: { email },
-        include: { organization: true }
-      });
-
-      if (!user) {
-        return sendJSON(res, 401, { error: 'Email ou senha inválidos' });
-      }
-
-      const valid = await bcrypt.compare(password, user.passwordHash);
-      if (!valid) {
-        return sendJSON(res, 401, { error: 'Email ou senha inválidos' });
-      }
-
-      if (!user.organization.active) {
-        return sendJSON(res, 403, { error: 'Conta desativada. Entre em contato com o suporte.' });
-      }
-
-      const token = jwt.sign(
-        { userId: user.id, email: user.email, organizationId: user.organizationId, role: user.role },
-        JWT_SECRET,
-        { expiresIn: '7d' }
-      );
-
-      return sendJSON(res, 200, {
-        token,
-        user: { id: user.id, name:
+npm warn config production Use `--omit=dev` instead.
+> constructflow-api@1.0.0 start
+> npx prisma db push --accept-data-loss; npx prisma generate; node server.js
+npm warn config production Use `--omit=dev` instead.
+Prisma schema loaded from schema.prisma
+Datasource "db": PostgreSQL database "railway", schema "public" at "postgres.railway.internal:5432"
+Starting Container
+The database is already in sync with the Prisma schema.
+Running generate... (Use --skip-generate to skip the generators)
+Running generate... - Prisma Client
+└─────────────────────────────────────────────────────────┘
+npm warn config production Use `--omit=dev` instead.
+✔ Generated Prisma Client (v6.19.3) to ./node_modules/@prisma/client in 60ms
+┌─────────────────────────────────────────────────────────┐
+│  Update available 6.19.3 -> 7.9.1                       │
+│                                                         │
+│  This is a major update - please follow the guide at    │
+│  https://pris.ly/d/major-version-upgrade                │
+│                                                         │
+│  Run the following to update                            │
+│    npm i --save-dev prisma@latest                       │
+│    npm i @prisma/client@latest                          │
+Prisma schema loaded from schema.prisma
+✔ Generated Prisma Client (v6.19.3) to ./node_modules/@prisma/client in 45ms
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+Tip: Interested in query caching in just a few lines of code? Try Accelerate today! https://pris.ly/tip-3-accelerate
+/app/server.js:157
+SyntaxError: Unexpected end of input
+    at wrapSafe (node:internal/modules/cjs/loader:1713:18)
+    at Module._compile (node:internal/modules/cjs/loader:1755:20)
+    at Object..js (node:internal/modules/cjs/loader:1913:10)
+    at Module.load (node:internal/modules/cjs/loader:1505:32)
+    at Function._load (node:internal/modules/cjs/loader:1309:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+    at node:internal/main/run_main_module:36:49
+Node.js v22.23.1
+npm warn config production Use `--omit=dev` instead.
+> constructflow-api@1.0.0 start
+> npx prisma db push --accept-data-loss; npx prisma generate; node server.js
+npm warn config production Use `--omit=dev` instead.
+Prisma schema loaded from schema.prisma
+Datasource "db": PostgreSQL database "railway", schema "public" at "postgres.railway.internal:5432"
+The database is already in sync with the Prisma schema.
+Running generate... (Use --skip-generate to skip the generators)
+Running generate... - Prisma Client
+✔ Generated Prisma Client (v6.19.3) to ./node_modules/@prisma/client in 58ms
+npm warn config production Use `--omit=dev` instead.
+Prisma schema loaded from schema.prisma
+✔ Generated Prisma Client (v6.19.3) to ./node_modules/@prisma/client in 71ms
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+Tip: Want to turn off tips and other hints? https://pris.ly/tip-4-nohints
+Node.js v22.23.1
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+    at Module._compile (node:internal/modules/cjs/loader:1755:20)
+/app/server.js:157
+    at Object..js (node:internal/modules/cjs/loader:1913:10)
+    at Module.load (node:internal/modules/cjs/loader:1505:32)
+    at node:internal/main/run_main_module:36:49
+    at Function._load (node:internal/modules/cjs/loader:1309:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+SyntaxError: Unexpected end of input
+    at wrapSafe (node:internal/modules/cjs/loader:1713:18)
+npm warn config production Use `--omit=dev` instead.
+> constructflow-api@1.0.0 start
+> npx prisma db push --accept-data-loss; npx prisma generate; node server.js
+npm warn config production Use `--omit=dev` instead.
+Prisma schema loaded from schema.prisma
+Datasource "db": PostgreSQL database "railway", schema "public" at "postgres.railway.internal:5432"
+The database is already in sync with the Prisma schema.
+Running generate... (Use --skip-generate to skip the generators)
+Running generate... - Prisma Client
+✔ Generated Prisma Client (v6.19.3) to ./node_modules/@prisma/client in 78ms
+npm warn config production Use `--omit=dev` instead.
+Prisma schema loaded from schema.prisma
+✔ Generated Prisma Client (v6.19.3) to ./node_modules/@prisma/client in 70ms
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
