@@ -92,11 +92,13 @@ const server = http.createServer(async (req, res) => {
       const pp = await prisma.project.findMany({ where: { organizationId: user.organizationId } });
       const tb = pp.reduce((s, p) => s + (p.budget || 0), 0);
       const ts = pp.reduce((s, p) => s + (p.spent || 0), 0);
-      return sendJSON(res, 200, { projetosAndamento: tp, atrasados: pp.filter(p => p.status === 'delayed').length, orcamentoVsGasto: tb > 0 ? Math.round((ts / tb) * 100) : 0, totalHoras: tp * 80, tarefasPendentes: 0 });
+      const tt = await prisma.task.count({ where: { project: { organizationId: user.organizationId } } });
+      const tpen = await prisma.task.count({ where: { project: { organizationId: user.organizationId }, status: 'pending' } });
+      return sendJSON(res, 200, { projetosAndamento: tp, atrasados: pp.filter(p => p.status === 'delayed').length, orcamentoVsGasto: tb > 0 ? Math.round((ts / tb) * 100) : 0, totalHoras: tt * 8, tarefasPendentes: tpen });
     }
 
     if (req.url === '/api/v1/projects' && req.method === 'GET') {
-      return sendJSON(res, 200, await prisma.project.findMany({ where: { organizationId: user.organizationId }, orderBy: { createdAt: 'desc' } }));
+      return sendJSON(res, 200, await prisma.project.findMany({ where: { organizationId: user.organizationId }, include: { tasks: true, alerts: true }, orderBy: { createdAt: 'desc' } }));
     }
 
     if (req.url === '/api/v1/projects' && req.method === 'POST') {
