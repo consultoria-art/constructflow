@@ -7,12 +7,12 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// Rota inicial de teste
+// Rota de teste para validar se o servidor subiu com sucesso
 app.get('/', (req, res) => {
-    res.json({ status: "OK", message: "Servidor ConstructFlow ativo!" });
+    res.json({ status: "OK", message: "Servidor ConstructFlow funcionando corretamente!" });
 });
 
-// Inicialização do servidor
+// Inicialização do servidor na porta configurada pelo ambiente
 app.listen(PORT, () => {
     console.log(`Servidor rodando com sucesso na porta ${PORT}`);
 });
