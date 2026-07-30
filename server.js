@@ -30,6 +30,70 @@ function getUser(req) {
   try { return jwt.verify(auth.split(' ')[1], JWT_SECRET); } catch { return null; }
 }
 
+// ============ AUTOMACAO: deteccao de desvios ============
+async function runAutomation(organizationId) {
+  const projects = await prisma.project.findMany({ where: { organizationId } });
+  const now = new Date();
+  let alertsCreated = 0;
+  let projectsMarkedDelayed = 0;
+
+  for (const p of projects) {
+    // Desvio de prazo: prazo vencido e projeto ainda nao concluido
+    if (p.deadline && new Date(p.deadline) < now && p.status !== 'completed' && p.status !== 'delayed') {
+      await prisma.project.update({ where: { id: p.id }, data: { status: 'delayed' } });
+      projectsMarkedDelayed++;
+    }
+
+    if (p.deadline && new Date(p.deadline) < now && p.status !== 'completed') {
+      const title = 'Desvio de prazo: ' + p.name;
+      const exists = await prisma.alert.findFirst({ where: { projectId: p.id, title, read: false } });
+      if (!exists) {
+        await prisma.alert.create({ data: { projectId: p.id, title, message: 'O prazo deste projeto venceu em ' + new Date(p.deadline).toLocaleDateString('pt-BR') + ' e ele ainda nao foi concluido.', type: 'urgent' } });
+        alertsCreated++;
+      }
+    }
+
+    // Desvio de custo: gasto maior que orcamento
+    if (p.budget > 0 && p.spent > p.budget) {
+      const title = 'Desvio de custo: ' + p.name;
+      const exists = await prisma.alert.findFirst({ where: { projectId: p.id, title, read: false } });
+      if (!exists) {
+        const pct = Math.round((p.spent / p.budget) * 100);
+        await prisma.alert.create({ data: { projectId: p.id, title, message: 'O gasto atual (' + pct + '% do orcamento) ultrapassou o valor orcado.', type: 'alert' } });
+        alertsCreated++;
+      }
+    }
+  }
+
+  return { alertsCreated, projectsMarkedDelayed };
+}
+
+// ============ PROJECAO DE MEDIO/LONGO PRAZO ============
+function calcProjecoes(projects) {
+  const now = new Date();
+  return projects
+    .filter(p => p.status !== 'completed')
+    .map(p => {
+      const diasDecorridos = Math.max(1, Math.round((now - new Date(p.createdAt)) / (1000 * 60 * 60 * 24)));
+      const ritmoDiario = p.spent / diasDecorridos;
+      let diasAteFinal = 30; // padrao se nao houver prazo
+      if (p.deadline) {
+        diasAteFinal = Math.max(1, Math.round((new Date(p.deadline) - new Date(p.createdAt)) / (1000 * 60 * 60 * 24)));
+      }
+      const gastoProjetado = Math.round(ritmoDiario * diasAteFinal * 100) / 100;
+      const estouraOrcamento = p.budget > 0 && gastoProjetado > p.budget;
+      return {
+        projectId: p.id,
+        projectName: p.name,
+        gastoAtual: p.spent,
+        gastoProjetado,
+        orcamento: p.budget,
+        estouraOrcamento,
+        diferenca: Math.round((gastoProjetado - p.budget) * 100) / 100
+      };
+    });
+}
+
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -88,13 +152,20 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.url === '/api/v1/dashboard' && req.method === 'GET') {
+      await runAutomation(user.organizationId);
       const tp = await prisma.project.count({ where: { organizationId: user.organizationId } });
       const pp = await prisma.project.findMany({ where: { organizationId: user.organizationId } });
       const tb = pp.reduce((s, p) => s + (p.budget || 0), 0);
       const ts = pp.reduce((s, p) => s + (p.spent || 0), 0);
       const tt = await prisma.task.count({ where: { project: { organizationId: user.organizationId } } });
       const tpen = await prisma.task.count({ where: { project: { organizationId: user.organizationId }, status: 'pending' } });
-      return sendJSON(res, 200, { projetosAndamento: tp, atrasados: pp.filter(p => p.status === 'delayed').length, orcamentoVsGasto: tb > 0 ? Math.round((ts / tb) * 100) : 0, totalHoras: tt * 8, tarefasPendentes: tpen });
+      const projecoes = calcProjecoes(pp);
+      return sendJSON(res, 200, { projetosAndamento: tp, atrasados: pp.filter(p => p.status === 'delayed').length, orcamentoVsGasto: tb > 0 ? Math.round((ts / tb) * 100) : 0, totalHoras: tt * 8, tarefasPendentes: tpen, projecoes });
+    }
+
+    if (req.url === '/api/v1/automation/run' && req.method === 'POST') {
+      const result = await runAutomation(user.organizationId);
+      return sendJSON(res, 200, result);
     }
 
     if (req.url === '/api/v1/projects' && req.method === 'GET') {
@@ -105,13 +176,40 @@ const server = http.createServer(async (req, res) => {
       const data = await parseBody(req);
       data.organizationId = user.organizationId;
       if (data.deadline) data.deadline = new Date(data.deadline);
+      if (data.budget !== undefined) data.budget = parseFloat(data.budget) || 0;
+      if (data.spent !== undefined) data.spent = parseFloat(data.spent) || 0;
       return sendJSON(res, 201, await prisma.project.create({ data }));
+    }
+
+    if (req.url === '/api/v1/projects/bulk' && req.method === 'POST') {
+      const { rows } = await parseBody(req);
+      if (!Array.isArray(rows)) return sendJSON(res, 400, { error: 'Formato invalido' });
+      let created = 0;
+      for (const r of rows) {
+        if (!r.name) continue;
+        await prisma.project.create({
+          data: {
+            name: String(r.name),
+            description: r.description ? String(r.description) : null,
+            budget: parseFloat(r.budget) || 0,
+            spent: parseFloat(r.spent) || 0,
+            status: r.status || 'active',
+            responsible: r.responsible ? String(r.responsible) : null,
+            deadline: r.deadline ? new Date(r.deadline) : null,
+            organizationId: user.organizationId
+          }
+        });
+        created++;
+      }
+      return sendJSON(res, 201, { created });
     }
 
     if (req.url.startsWith('/api/v1/projects/') && req.method === 'PUT') {
       const id = req.url.split('/')[4];
       const data = await parseBody(req);
       if (data.deadline) data.deadline = new Date(data.deadline);
+      if (data.budget !== undefined) data.budget = parseFloat(data.budget) || 0;
+      if (data.spent !== undefined) data.spent = parseFloat(data.spent) || 0;
       delete data.organizationId;
       return sendJSON(res, 200, await prisma.project.update({ where: { id }, data }));
     }
@@ -132,6 +230,35 @@ const server = http.createServer(async (req, res) => {
       const data = await parseBody(req);
       if (data.deadline) data.deadline = new Date(data.deadline);
       return sendJSON(res, 201, await prisma.task.create({ data }));
+    }
+
+    if (req.url === '/api/v1/tasks/bulk' && req.method === 'POST') {
+      const { rows } = await parseBody(req);
+      if (!Array.isArray(rows)) return sendJSON(res, 400, { error: 'Formato invalido' });
+      const projects = await prisma.project.findMany({ where: { organizationId: user.organizationId } });
+      let created = 0, skipped = 0;
+      for (const r of rows) {
+        if (!r.title) { skipped++; continue; }
+        let projectId = r.projectId;
+        if (!projectId && r.project) {
+          const match = projects.find(p => p.name.toLowerCase() === String(r.project).toLowerCase());
+          if (match) projectId = match.id;
+        }
+        if (!projectId) { skipped++; continue; }
+        await prisma.task.create({
+          data: {
+            title: String(r.title),
+            description: r.description ? String(r.description) : null,
+            status: r.status || 'pending',
+            priority: r.priority || 'medium',
+            responsible: r.responsible ? String(r.responsible) : null,
+            deadline: r.deadline ? new Date(r.deadline) : null,
+            projectId
+          }
+        });
+        created++;
+      }
+      return sendJSON(res, 201, { created, skipped });
     }
 
     if (req.url.startsWith('/api/v1/tasks/') && req.method === 'PUT') {
