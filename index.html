@@ -116,6 +116,22 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
 .tab-btn { padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; background: #e5e7eb; color: #374151; }
 .tab-btn.active { background: #4f46e5; color: #fff; }
+.cal-legend { display: flex; gap: 16px; margin-bottom: 14px; font-size: 12px; color: #374151; }
+.cal-legend-dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 4px; vertical-align: middle; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.cal-weekday { font-size: 11px; color: #6b7280; text-align: center; font-weight: 600; padding-bottom: 4px; }
+.cal-day { border-radius: 8px; padding: 8px 6px; min-height: 64px; background: #f9fafb; font-size: 12px; cursor: pointer; border: 1px solid #e5e7eb; }
+.cal-day:hover { border-color: #4f46e5; }
+.cal-day.today { border: 2px solid #4f46e5; }
+.cal-day.other-month { opacity: 0.35; }
+.cal-day.has-red { background: #fee2e2; }
+.cal-day.has-orange { background: #fef3c7; }
+.cal-day.has-green { background: #dcfce7; }
+.cal-daynum { font-weight: 600; margin-bottom: 4px; }
+.cal-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 2px; }
+.cal-dot-red { background: #ef4444; }
+.cal-dot-orange { background: #f59e0b; }
+.cal-dot-green { background: #22c55e; }
 @media (max-width: 1024px) { .kpis { grid-template-columns: repeat(3, 1fr); } .content-grid { grid-template-columns: 1fr; } .summary-cards { grid-template-columns: repeat(2, 1fr); } .kanban-board { grid-template-columns: 1fr; } }
 @media (max-width: 768px) { .sidebar { width: 60px; } .sidebar .logo span { margin: 0; } .sidebar nav a span, .sidebar .user-info div, .sidebar .logout { display: none; } .main { margin-left: 60px; padding: 16px; } .kpis { grid-template-columns: repeat(2, 1fr); } }
 </style>
@@ -282,9 +298,28 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 
   <!-- CALENDARIO -->
   <div class="view-section" id="view-calendario">
-    <div class="header"><div><h1>Calendario</h1><p>Prazos de projetos e tarefas</p></div></div>
-    <div class="card"><h3>Atrasados</h3><div id="calAtrasados"><div class="loading">Carregando...</div></div></div>
-    <div class="card" style="margin-top:16px;"><h3>Proximos prazos</h3><div id="calProximos"><div class="loading">Carregando...</div></div></div>
+    <div class="header">
+      <div><h1>Calendario</h1><p>Prazos de projetos e tarefas</p></div>
+      <div class="header-right">
+        <button class="btn btn-secondary" onclick="calMonthShift(-1)">&larr; Mes anterior</button>
+        <span id="calMonthLabel" style="font-weight:600;font-size:14px;min-width:140px;text-align:center;display:inline-block;"></span>
+        <button class="btn btn-secondary" onclick="calMonthShift(1)">Proximo mes &rarr;</button>
+        <button class="btn btn-secondary" onclick="calGoToday()">Hoje</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="cal-legend">
+        <span><span class="cal-legend-dot" style="background:#ef4444;"></span>Vencido</span>
+        <span><span class="cal-legend-dot" style="background:#f59e0b;"></span>Vence em ate 7 dias</span>
+        <span><span class="cal-legend-dot" style="background:#22c55e;"></span>No prazo</span>
+      </div>
+      <div class="cal-grid" id="calWeekdays"></div>
+      <div class="cal-grid" id="calGrid" style="margin-top:6px;"></div>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <h3 id="calSelectedDayTitle">Detalhes do dia</h3>
+      <div id="calSelectedDayItems"><div class="loading">Clique em um dia marcado para ver os detalhes</div></div>
+    </div>
   </div>
 
   <!-- ORCAMENTO -->
@@ -1104,10 +1139,21 @@ async function sendComment() {
   } catch (e) { alert('Erro ao enviar mensagem'); }
 }
 
-// ============ CALENDARIO ============
+// ============ CALENDARIO (GRADE MENSAL) ============
+let calCurrentDate = new Date();
+let calItems = [];
+
+function calDayColor(date) {
+  const now = new Date();
+  const today0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const d0 = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diffDays = Math.round((d0 - today0) / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return 'red';
+  if (diffDays <= 7) return 'orange';
+  return 'green';
+}
+
 async function loadCalendarioView() {
-  const cAtraso = document.getElementById('calAtrasados');
-  const cProx = document.getElementById('calProximos');
   try {
     const [projRes, taskRes] = await Promise.all([
       fetch(API + '/api/v1/projects', { headers: apiHeaders() }),
@@ -1115,15 +1161,87 @@ async function loadCalendarioView() {
     ]);
     const projects = await projRes.json();
     const tasks = await taskRes.json();
-    const now = new Date();
-    const items = [];
-    projects.forEach(p => { if (p.deadline) items.push({ label: 'Projeto: ' + p.name, date: new Date(p.deadline) }); });
-    tasks.forEach(t => { if (t.deadline) items.push({ label: 'Tarefa: ' + t.title, date: new Date(t.deadline) }); });
-    const atrasados = items.filter(i => i.date < now).sort((a, b) => a.date - b.date);
-    const proximos = items.filter(i => i.date >= now).sort((a, b) => a.date - b.date);
-    cAtraso.innerHTML = atrasados.length ? atrasados.map(i => '<div class="alert-item"><div class="alert-icon alert-urgent">!</div><div><strong>' + i.label + '</strong><br>' + i.date.toLocaleDateString('pt-BR') + '</div></div>').join('') : '<div class="loading">Nenhum item atrasado</div>';
-    cProx.innerHTML = proximos.length ? proximos.map(i => '<div class="alert-item"><div class="alert-icon alert-info">i</div><div><strong>' + i.label + '</strong><br>' + i.date.toLocaleDateString('pt-BR') + '</div></div>').join('') : '<div class="loading">Nenhum prazo futuro</div>';
-  } catch (e) { cAtraso.innerHTML = '<div class="loading">Erro ao carregar</div>'; }
+    calItems = [];
+    projects.forEach(p => { if (p.deadline) calItems.push({ label: 'Projeto: ' + p.name, date: new Date(p.deadline), type: 'projeto' }); });
+    tasks.forEach(t => { if (t.deadline) calItems.push({ label: 'Tarefa: ' + t.title, date: new Date(t.deadline), type: 'tarefa' }); });
+    calCurrentDate = new Date();
+    renderCalendarGrid();
+  } catch (e) { console.error(e); }
+}
+
+function calMonthShift(delta) {
+  calCurrentDate = new Date(calCurrentDate.getFullYear(), calCurrentDate.getMonth() + delta, 1);
+  renderCalendarGrid();
+}
+
+function calGoToday() {
+  calCurrentDate = new Date();
+  renderCalendarGrid();
+}
+
+function renderCalendarGrid() {
+  const year = calCurrentDate.getFullYear();
+  const month = calCurrentDate.getMonth();
+  const monthNames = ['Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+  document.getElementById('calMonthLabel').textContent = monthNames[month] + ' ' + year;
+
+  const weekdaysHtml = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'].map(w => '<div class="cal-weekday">' + w + '</div>').join('');
+  document.getElementById('calWeekdays').innerHTML = weekdaysHtml;
+
+  const firstDay = new Date(year, month, 1);
+  const startOffset = firstDay.getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const daysInPrevMonth = new Date(year, month, 0).getDate();
+  const now = new Date();
+  const todayStr = now.toDateString();
+
+  const cells = [];
+  for (let i = startOffset - 1; i >= 0; i--) {
+    cells.push({ day: daysInPrevMonth - i, otherMonth: true, date: new Date(year, month - 1, daysInPrevMonth - i) });
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push({ day: d, otherMonth: false, date: new Date(year, month, d) });
+  }
+  while (cells.length % 7 !== 0 || cells.length < 42) {
+    const nextIdx = cells.length - (startOffset + daysInMonth) + 1;
+    cells.push({ day: nextIdx, otherMonth: true, date: new Date(year, month + 1, nextIdx) });
+    if (cells.length >= 42) break;
+  }
+
+  const grid = document.getElementById('calGrid');
+  grid.innerHTML = cells.map(cell => {
+    const itemsForDay = calItems.filter(i => i.date.toDateString() === cell.date.toDateString());
+    let worstColor = null;
+    itemsForDay.forEach(i => {
+      const c = calDayColor(i.date);
+      if (c === 'red') worstColor = 'red';
+      else if (c === 'orange' && worstColor !== 'red') worstColor = 'orange';
+      else if (c === 'green' && !worstColor) worstColor = 'green';
+    });
+    const classes = ['cal-day'];
+    if (cell.otherMonth) classes.push('other-month');
+    if (cell.date.toDateString() === todayStr) classes.push('today');
+    if (worstColor) classes.push('has-' + worstColor);
+    const dotsHtml = itemsForDay.slice(0, 4).map(i => '<span class="cal-dot cal-dot-' + calDayColor(i.date) + '"></span>').join('');
+    return '<div class="' + classes.join(' ') + '" onclick="calShowDay(\'' + cell.date.toISOString() + '\')">'
+      + '<div class="cal-daynum">' + cell.day + '</div>'
+      + (itemsForDay.length ? '<div>' + dotsHtml + '</div>' : '')
+      + '</div>';
+  }).join('');
+}
+
+function calShowDay(isoDate) {
+  const date = new Date(isoDate);
+  const itemsForDay = calItems.filter(i => i.date.toDateString() === date.toDateString());
+  document.getElementById('calSelectedDayTitle').textContent = 'Detalhes de ' + date.toLocaleDateString('pt-BR');
+  const box = document.getElementById('calSelectedDayItems');
+  if (!itemsForDay.length) { box.innerHTML = '<div class="loading">Nenhum prazo nesta data</div>'; return; }
+  box.innerHTML = itemsForDay.map(i => {
+    const color = calDayColor(i.date);
+    const iconClass = color === 'red' ? 'alert-urgent' : color === 'orange' ? 'alert-warning' : 'alert-info';
+    const label = color === 'red' ? 'Vencido' : color === 'orange' ? 'Vence em breve' : 'No prazo';
+    return '<div class="alert-item"><div class="alert-icon ' + iconClass + '">!</div><div><strong>' + i.label + '</strong><br>' + label + '</div></div>';
+  }).join('');
 }
 
 // ============ ORCAMENTO ============
