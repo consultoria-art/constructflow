@@ -33,6 +33,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 .sidebar .user-avatar { width: 36px; height: 36px; border-radius: 50%; background: #4f46e5; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; }
 .sidebar .user-name { font-size: 13px; font-weight: 500; }
 .sidebar .user-org { font-size: 11px; color: #9ca3af; }
+.sidebar .logout { margin-top: 10px; font-size: 12px; color: #9ca3af; cursor: pointer; text-decoration: underline; }
 .main { margin-left: 240px; padding: 24px 32px; }
 .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
 .header h1 { font-size: 24px; font-weight: 700; }
@@ -41,6 +42,8 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 .btn { padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; }
 .btn-primary { background: #4f46e5; color: #fff; }
 .btn-primary:hover { background: #4338ca; }
+.btn-secondary { background: #e5e7eb; color: #374151; }
+.btn-danger { background: #fee2e2; color: #991b1b; }
 .btn-sm { padding: 6px 12px; font-size: 12px; }
 .kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 24px; }
 .kpi-card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
@@ -81,10 +84,23 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 .status-active { background: #d1fae5; color: #065f46; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
 .status-delayed { background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
 .status-completed { background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+.status-pending { background: #fef9c3; color: #854d0e; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+.status-in_progress { background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+.status-done { background: #d1fae5; color: #065f46; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+.priority-low { background: #f3f4f6; color: #374151; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+.priority-medium { background: #ffedd5; color: #9a3412; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+.priority-high { background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
 .loading { text-align: center; padding: 40px; color: #6b7280; }
 .hidden { display: none !important; }
-@media (max-width: 1024px) { .kpis { grid-template-columns: repeat(3, 1fr); } .content-grid { grid-template-columns: 1fr; } }
-@media (max-width: 768px) { .sidebar { width: 60px; } .sidebar .logo span { margin: 0; } .sidebar nav a span, .sidebar .user-info div { display: none; } .main { margin-left: 60px; padding: 16px; } .kpis { grid-template-columns: repeat(2, 1fr); } }
+.view-section { display: none; }
+.view-section.active { display: block; }
+.field { display:block; font-size:13px; font-weight:500; margin-bottom:4px; color:#374151; }
+.input { width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:14px; margin-bottom:12px; }
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:100; align-items:center; justify-content:center; }
+.modal-box { background:#fff; border-radius:16px; padding:32px; width:480px; max-width:90%; max-height:90vh; overflow-y:auto; }
+.summary-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+@media (max-width: 1024px) { .kpis { grid-template-columns: repeat(3, 1fr); } .content-grid { grid-template-columns: 1fr; } .summary-cards { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 768px) { .sidebar { width: 60px; } .sidebar .logo span { margin: 0; } .sidebar nav a span, .sidebar .user-info div, .sidebar .logout { display: none; } .main { margin-left: 60px; padding: 16px; } .kpis { grid-template-columns: repeat(2, 1fr); } }
 </style>
 </head>
 <body>
@@ -129,76 +145,222 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <div class="sidebar">
 <div class="logo"><span>CF</span> ConstructFlow</div>
 <nav>
-<a class="active" onclick="loadDashboard()"><span>📊</span> Visao Geral</a>
-<a><span>📁</span> Projetos</a>
-<a><span>✅</span> Tarefas</a>
-<a><span>📅</span> Calendario</a>
-<a><span>💰</span> Orcamento</a>
-<a><span>📄</span> Relatorios</a>
-<a><span>👥</span> Equipe</a>
-<a><span>⚙️</span> Configuracoes</a>
+<a class="active" data-view="visaogeral" onclick="showView('visaogeral')"><span>📊</span> Visao Geral</a>
+<a data-view="projetos" onclick="showView('projetos')"><span>📁</span> Projetos</a>
+<a data-view="tarefas" onclick="showView('tarefas')"><span>✅</span> Tarefas</a>
+<a data-view="calendario" onclick="showView('calendario')"><span>📅</span> Calendario</a>
+<a data-view="orcamento" onclick="showView('orcamento')"><span>💰</span> Orcamento</a>
+<a data-view="relatorios" onclick="showView('relatorios')"><span>📄</span> Relatorios</a>
+<a data-view="equipe" onclick="showView('equipe')"><span>👥</span> Equipe</a>
+<a data-view="configuracoes" onclick="showView('configuracoes')"><span>⚙️</span> Configuracoes</a>
 </nav>
 <div class="user-info">
 <div class="user-avatar" id="userAvatar">A</div>
 <div><div class="user-name" id="userName">Carregando...</div><div class="user-org" id="userOrg">Carregando...</div></div>
 </div>
+<div class="logout" onclick="logout()">Sair</div>
 </div>
 
 <div class="main">
-<div class="header">
-<div>
-<h1>Painel de Controle</h1>
-<p id="headerOrg">ConstructFlow</p>
-</div>
-<div class="header-right">
-<p id="headerDate" style="font-size:13px;color:#6b7280;"></p>
-<button class="btn btn-primary" onclick="showNewProject()">+ Novo Projeto</button>
+
+  <!-- VISAO GERAL -->
+  <div class="view-section active" id="view-visaogeral">
+    <div class="header">
+      <div><h1>Painel de Controle</h1><p id="headerOrg">ConstructFlow</p></div>
+      <div class="header-right">
+        <p id="headerDate" style="font-size:13px;color:#6b7280;"></p>
+        <button class="btn btn-primary" onclick="openProjectModal()">+ Novo Projeto</button>
+      </div>
+    </div>
+    <div class="kpis">
+      <div class="kpi-card"><div class="kpi-value" id="kpiProjetos">0</div><div class="kpi-label">PROJETOS ATIVOS</div><span class="kpi-badge badge-green">Em andamento</span></div>
+      <div class="kpi-card"><div class="kpi-value" id="kpiAtrasados">0</div><div class="kpi-label">ATRASADOS</div><span class="kpi-badge badge-red">Requer atencao</span></div>
+      <div class="kpi-card"><div class="kpi-value" id="kpiOrcamento">0%</div><div class="kpi-label">ORCAMENTO VS GASTO</div><span class="kpi-badge badge-blue">% utilizado</span></div>
+      <div class="kpi-card"><div class="kpi-value" id="kpiHoras">0</div><div class="kpi-label">TOTAL DE HORAS</div><span class="kpi-badge badge-orange">Horas registradas</span></div>
+      <div class="kpi-card"><div class="kpi-value" id="kpiTarefas">0</div><div class="kpi-label">TAREFAS PENDENTES</div><span class="kpi-badge badge-red">A fazer</span></div>
+    </div>
+    <div class="content-grid">
+      <div class="card"><h3>Cronograma dos Projetos</h3><div id="ganttContainer"><div class="loading">Carregando...</div></div></div>
+      <div class="card"><h3>Acompanhamento de Custos</h3><div id="costChart"><div class="loading">Carregando...</div></div></div>
+    </div>
+    <div class="content-grid">
+      <div class="card"><h3>Alertas</h3><div id="alertsContainer"><div class="loading">Carregando...</div></div></div>
+      <div class="card"><h3>Projetos Recentes</h3><div id="projectsTable"><div class="loading">Carregando...</div></div></div>
+    </div>
+  </div>
+
+  <!-- PROJETOS -->
+  <div class="view-section" id="view-projetos">
+    <div class="header">
+      <div><h1>Projetos</h1><p>Todos os projetos da organizacao</p></div>
+      <div class="header-right"><button class="btn btn-primary" onclick="openProjectModal()">+ Novo Projeto</button></div>
+    </div>
+    <div class="card"><div id="projetosFullTable"><div class="loading">Carregando...</div></div></div>
+  </div>
+
+  <!-- TAREFAS -->
+  <div class="view-section" id="view-tarefas">
+    <div class="header">
+      <div><h1>Tarefas</h1><p>Todas as tarefas dos projetos</p></div>
+      <div class="header-right"><button class="btn btn-primary" onclick="openTaskModal()">+ Nova Tarefa</button></div>
+    </div>
+    <div class="card"><div id="tarefasTable"><div class="loading">Carregando...</div></div></div>
+  </div>
+
+  <!-- CALENDARIO -->
+  <div class="view-section" id="view-calendario">
+    <div class="header"><div><h1>Calendario</h1><p>Prazos de projetos e tarefas</p></div></div>
+    <div class="card"><h3>Atrasados</h3><div id="calAtrasados"><div class="loading">Carregando...</div></div></div>
+    <div class="card" style="margin-top:16px;"><h3>Proximos prazos</h3><div id="calProximos"><div class="loading">Carregando...</div></div></div>
+  </div>
+
+  <!-- ORCAMENTO -->
+  <div class="view-section" id="view-orcamento">
+    <div class="header"><div><h1>Orcamento</h1><p>Visao financeira dos projetos</p></div></div>
+    <div class="summary-cards">
+      <div class="kpi-card"><div class="kpi-value" id="orcTotalBudget">R$ 0</div><div class="kpi-label">ORCAMENTO TOTAL</div></div>
+      <div class="kpi-card"><div class="kpi-value" id="orcTotalSpent">R$ 0</div><div class="kpi-label">GASTO TOTAL</div></div>
+      <div class="kpi-card"><div class="kpi-value" id="orcSaldo">R$ 0</div><div class="kpi-label">SALDO DISPONIVEL</div></div>
+      <div class="kpi-card"><div class="kpi-value" id="orcPct">0%</div><div class="kpi-label">% UTILIZADO</div></div>
+    </div>
+    <div class="card"><div id="orcamentoTable"><div class="loading">Carregando...</div></div></div>
+  </div>
+
+  <!-- RELATORIOS -->
+  <div class="view-section" id="view-relatorios">
+    <div class="header"><div><h1>Relatorios</h1><p>Resumo geral da operacao</p></div></div>
+    <div class="content-grid">
+      <div class="card"><h3>Projetos por status</h3><div id="repProjectStatus"><div class="loading">Carregando...</div></div></div>
+      <div class="card"><h3>Tarefas por status</h3><div id="repTaskStatus"><div class="loading">Carregando...</div></div></div>
+    </div>
+  </div>
+
+  <!-- EQUIPE -->
+  <div class="view-section" id="view-equipe">
+    <div class="header">
+      <div><h1>Equipe</h1><p>Usuarios da organizacao</p></div>
+      <div class="header-right"><button class="btn btn-primary" onclick="openUserModal()">+ Convidar Usuario</button></div>
+    </div>
+    <div class="card"><div id="equipeTable"><div class="loading">Carregando...</div></div></div>
+  </div>
+
+  <!-- CONFIGURACOES -->
+  <div class="view-section" id="view-configuracoes">
+    <div class="header"><div><h1>Configuracoes</h1><p>Dados da sua conta e organizacao</p></div></div>
+    <div class="content-grid">
+      <div class="card">
+        <h3>Organizacao</h3>
+        <div class="error" id="orgError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+        <label class="field">Nome da Organizacao</label>
+        <input class="input" id="cfgOrgName" type="text">
+        <button class="btn btn-primary" onclick="saveOrganization()">Salvar</button>
+      </div>
+      <div class="card">
+        <h3>Sua Conta</h3>
+        <p style="font-size:13px;color:#374151;margin-bottom:6px;"><strong>Nome:</strong> <span id="cfgUserName"></span></p>
+        <p style="font-size:13px;color:#374151;margin-bottom:6px;"><strong>Email:</strong> <span id="cfgUserEmail"></span></p>
+        <p style="font-size:13px;color:#374151;"><strong>Perfil:</strong> <span id="cfgUserRole"></span></p>
+      </div>
+    </div>
+  </div>
+
 </div>
 </div>
 
-<div class="kpis">
-<div class="kpi-card"><div class="kpi-value" id="kpiProjetos">0</div><div class="kpi-label">PROJETOS ATIVOS</div><span class="kpi-badge badge-green">Em andamento</span></div>
-<div class="kpi-card"><div class="kpi-value" id="kpiAtrasados">0</div><div class="kpi-label">ATRASADOS</div><span class="kpi-badge badge-red">Requer atencao</span></div>
-<div class="kpi-card"><div class="kpi-value" id="kpiOrcamento">0%</div><div class="kpi-label">ORCAMENTO VS GASTO</div><span class="kpi-badge badge-blue">% utilizado</span></div>
-<div class="kpi-card"><div class="kpi-value" id="kpiHoras">0</div><div class="kpi-label">TOTAL DE HORAS</div><span class="kpi-badge badge-orange">Horas registradas</span></div>
-<div class="kpi-card"><div class="kpi-value" id="kpiTarefas">0</div><div class="kpi-label">TAREFAS PENDENTES</div><span class="kpi-badge badge-red">A fazer</span></div>
-</div>
-
-<div class="content-grid">
-<div class="card"><h3>Cronograma dos Projetos</h3><div id="ganttContainer"><div class="loading">Carregando...</div></div></div>
-<div class="card"><h3>Acompanhamento de Custos</h3><div id="costChart"><div class="loading">Carregando...</div></div></div>
-</div>
-
-<div class="content-grid">
-<div class="card"><h3>Alertas</h3><div id="alertsContainer"><div class="loading">Carregando...</div></div></div>
-<div class="card"><h3>Projetos Recentes</h3><div id="projectsTable"><div class="loading">Carregando...</div></div></div>
-</div>
-</div>
-</div>
-
-<div style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;align-items:center;justify-content:center;" id="modalOverlay">
-<div style="background:#fff;border-radius:16px;padding:32px;width:480px;max-width:90%;max-height:90vh;overflow-y:auto;">
-<h2 style="margin-bottom:20px;">Novo Projeto</h2>
+<!-- MODAL PROJETO -->
+<div class="modal-overlay" id="projectModal">
+<div class="modal-box">
+<h2 style="margin-bottom:20px;" id="projectModalTitle">Novo Projeto</h2>
 <div class="error" id="projectError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
-<label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px;color:#374151;">Nome do Projeto</label>
-<input id="inputName" type="text" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;margin-bottom:12px;">
-<label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px;color:#374151;">Descricao</label>
-<textarea id="inputDesc" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;margin-bottom:12px;resize:vertical;" rows="2"></textarea>
-<label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px;color:#374151;">Orcamento (R$)</label>
-<input id="inputBudget" type="number" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;margin-bottom:12px;">
-<label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px;color:#374151;">Responsavel</label>
-<input id="inputResponsible" type="text" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;margin-bottom:12px;">
-<label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px;color:#374151;">Prazo</label>
-<input id="inputDeadline" type="date" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;margin-bottom:12px;">
+<label class="field">Nome do Projeto</label>
+<input id="inputName" type="text" class="input">
+<label class="field">Descricao</label>
+<textarea id="inputDesc" class="input" rows="2" style="resize:vertical;"></textarea>
+<label class="field">Orcamento (R$)</label>
+<input id="inputBudget" type="number" class="input">
+<label class="field">Gasto ate agora (R$)</label>
+<input id="inputSpent" type="number" class="input">
+<label class="field">Status</label>
+<select id="inputStatus" class="input">
+<option value="active">Ativo</option>
+<option value="delayed">Atrasado</option>
+<option value="completed">Concluido</option>
+</select>
+<label class="field">Responsavel</label>
+<input id="inputResponsible" type="text" class="input">
+<label class="field">Prazo</label>
+<input id="inputDeadline" type="date" class="input">
 <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
-<button class="btn" style="background:#e5e7eb;color:#374151;" onclick="closeModal()">Cancelar</button>
-<button class="btn btn-primary" onclick="createProject()">Criar Projeto</button>
+<button class="btn btn-secondary" onclick="closeModal('projectModal')">Cancelar</button>
+<button class="btn btn-primary" onclick="saveProject()">Salvar</button>
+</div>
+</div>
+</div>
+
+<!-- MODAL TAREFA -->
+<div class="modal-overlay" id="taskModal">
+<div class="modal-box">
+<h2 style="margin-bottom:20px;" id="taskModalTitle">Nova Tarefa</h2>
+<div class="error" id="taskError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+<label class="field">Titulo</label>
+<input id="taskTitle" type="text" class="input">
+<label class="field">Descricao</label>
+<textarea id="taskDesc" class="input" rows="2" style="resize:vertical;"></textarea>
+<label class="field">Projeto</label>
+<select id="taskProject" class="input"></select>
+<label class="field">Status</label>
+<select id="taskStatus" class="input">
+<option value="pending">Pendente</option>
+<option value="in_progress">Em andamento</option>
+<option value="done">Concluida</option>
+</select>
+<label class="field">Prioridade</label>
+<select id="taskPriority" class="input">
+<option value="low">Baixa</option>
+<option value="medium">Media</option>
+<option value="high">Alta</option>
+</select>
+<label class="field">Responsavel</label>
+<input id="taskResponsible" type="text" class="input">
+<label class="field">Prazo</label>
+<input id="taskDeadline" type="date" class="input">
+<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
+<button class="btn btn-secondary" onclick="closeModal('taskModal')">Cancelar</button>
+<button class="btn btn-primary" onclick="saveTask()">Salvar</button>
+</div>
+</div>
+</div>
+
+<!-- MODAL USUARIO -->
+<div class="modal-overlay" id="userModal">
+<div class="modal-box">
+<h2 style="margin-bottom:20px;">Convidar Usuario</h2>
+<div class="error" id="userError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+<label class="field">Nome</label>
+<input id="userNameInput" type="text" class="input">
+<label class="field">Email</label>
+<input id="userEmailInput" type="email" class="input">
+<label class="field">Senha temporaria</label>
+<input id="userPasswordInput" type="password" class="input" placeholder="Minimo 6 caracteres">
+<label class="field">Perfil</label>
+<select id="userRoleInput" class="input">
+<option value="user">Usuario</option>
+<option value="admin">Administrador</option>
+</select>
+<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
+<button class="btn btn-secondary" onclick="closeModal('userModal')">Cancelar</button>
+<button class="btn btn-primary" onclick="saveUser()">Convidar</button>
 </div>
 </div>
 </div>
 
 <script>
 const API = '';
+let currentUser = null;
+let editingProjectId = null;
+let editingTaskId = null;
+let cachedProjects = [];
+
 function getToken() { return localStorage.getItem('cf_token'); }
 function setToken(t) { localStorage.setItem('cf_token', t); }
 function clearToken() { localStorage.removeItem('cf_token'); }
@@ -256,7 +418,11 @@ async function signup() {
   } catch (e) { loader.style.display = 'none'; error.textContent = e.message; error.style.display = 'block'; }
 }
 
+function logout() { clearToken(); location.reload(); }
+
 function enterDashboard(data) {
+  currentUser = data.user;
+  currentUser.organization = data.organization;
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('signupScreen').classList.add('hidden');
   document.getElementById('dashboard').style.display = 'block';
@@ -266,9 +432,36 @@ function enterDashboard(data) {
   document.getElementById('headerOrg').textContent = 'ConstructFlow - ' + data.organization.name;
   const now = new Date();
   document.getElementById('headerDate').textContent = now.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
-  loadDashboard();
+  showView('visaogeral');
 }
 
+function showView(view) {
+  document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+  document.getElementById('view-' + view).classList.add('active');
+  document.querySelectorAll('.sidebar nav a').forEach(a => a.classList.remove('active'));
+  const navEl = document.querySelector('.sidebar nav a[data-view="' + view + '"]');
+  if (navEl) navEl.classList.add('active');
+
+  if (view === 'visaogeral') loadDashboard();
+  else if (view === 'projetos') loadProjetosView();
+  else if (view === 'tarefas') loadTarefasView();
+  else if (view === 'calendario') loadCalendarioView();
+  else if (view === 'orcamento') loadOrcamentoView();
+  else if (view === 'relatorios') loadRelatoriosView();
+  else if (view === 'equipe') loadEquipeView();
+  else if (view === 'configuracoes') loadConfiguracoesView();
+}
+
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+  const err = document.querySelector('#' + id + ' .error');
+  if (err) err.style.display = 'none';
+}
+
+function fmtMoney(v) { return 'R$ ' + (v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function fmtDate(d) { return d ? new Date(d).toLocaleDateString('pt-BR') : '-'; }
+
+// ============ VISAO GERAL ============
 async function loadDashboard() {
   try {
     const [dashRes, projRes, alertRes] = await Promise.all([
@@ -279,6 +472,7 @@ async function loadDashboard() {
     const dash = await dashRes.json();
     const projects = await projRes.json();
     const alerts = await alertRes.json();
+    cachedProjects = projects;
     document.getElementById('kpiProjetos').textContent = dash.projetosAndamento;
     document.getElementById('kpiAtrasados').textContent = dash.atrasados;
     document.getElementById('kpiOrcamento').textContent = dash.orcamentoVsGasto + '%';
@@ -330,40 +524,329 @@ function renderProjectsTable(projects) {
   const c = document.getElementById('projectsTable');
   if (!projects || projects.length === 0) { c.innerHTML = '<div class="loading">Nenhum projeto cadastrado</div>'; return; }
   let h = '<table class="table-projects"><thead><tr><th>Projeto</th><th>Status</th><th>Orcamento</th><th>Gasto</th><th>Responsavel</th></tr></thead><tbody>';
-  projects.forEach(p => {
+  projects.slice(0, 6).forEach(p => {
     const statusClass = p.status === 'delayed' ? 'status-delayed' : p.status === 'completed' ? 'status-completed' : 'status-active';
     const statusLabel = p.status === 'delayed' ? 'Atrasado' : p.status === 'completed' ? 'Concluido' : 'Ativo';
-    h += '<tr><td><strong>' + p.name + '</strong></td><td><span class="' + statusClass + '">' + statusLabel + '</span></td><td>R$ ' + (p.budget || 0).toFixed(2) + '</td><td>R$ ' + (p.spent || 0).toFixed(2) + '</td><td>' + (p.responsible || '-') + '</td></tr>';
+    h += '<tr><td><strong>' + p.name + '</strong></td><td><span class="' + statusClass + '">' + statusLabel + '</span></td><td>' + fmtMoney(p.budget) + '</td><td>' + fmtMoney(p.spent) + '</td><td>' + (p.responsible || '-') + '</td></tr>';
   });
   h += '</tbody></table>';
   c.innerHTML = h;
 }
 
-function showNewProject() { document.getElementById('modalOverlay').style.display = 'flex'; }
-function closeModal() { document.getElementById('modalOverlay').style.display = 'none'; document.getElementById('projectError').style.display = 'none'; }
+// ============ PROJETOS (view completa) ============
+async function loadProjetosView() {
+  const c = document.getElementById('projetosFullTable');
+  try {
+    const res = await fetch(API + '/api/v1/projects', { headers: apiHeaders() });
+    const projects = await res.json();
+    cachedProjects = projects;
+    if (!projects || projects.length === 0) { c.innerHTML = '<div class="loading">Nenhum projeto cadastrado</div>'; return; }
+    let h = '<table class="table-projects"><thead><tr><th>Projeto</th><th>Status</th><th>Orcamento</th><th>Gasto</th><th>Responsavel</th><th>Prazo</th><th>Acoes</th></tr></thead><tbody>';
+    projects.forEach(p => {
+      const statusClass = p.status === 'delayed' ? 'status-delayed' : p.status === 'completed' ? 'status-completed' : 'status-active';
+      const statusLabel = p.status === 'delayed' ? 'Atrasado' : p.status === 'completed' ? 'Concluido' : 'Ativo';
+      h += '<tr><td><strong>' + p.name + '</strong></td><td><span class="' + statusClass + '">' + statusLabel + '</span></td><td>' + fmtMoney(p.budget) + '</td><td>' + fmtMoney(p.spent) + '</td><td>' + (p.responsible || '-') + '</td><td>' + fmtDate(p.deadline) + '</td>'
+        + '<td><button class="btn btn-sm btn-secondary" onclick="editProject(\'' + p.id + '\')">Editar</button> <button class="btn btn-sm btn-danger" onclick="deleteProject(\'' + p.id + '\')">Excluir</button></td></tr>';
+    });
+    h += '</tbody></table>';
+    c.innerHTML = h;
+  } catch (e) { c.innerHTML = '<div class="loading">Erro ao carregar projetos</div>'; }
+}
 
-async function createProject() {
+function openProjectModal() {
+  editingProjectId = null;
+  document.getElementById('projectModalTitle').textContent = 'Novo Projeto';
+  document.getElementById('inputName').value = '';
+  document.getElementById('inputDesc').value = '';
+  document.getElementById('inputBudget').value = '';
+  document.getElementById('inputSpent').value = '';
+  document.getElementById('inputStatus').value = 'active';
+  document.getElementById('inputResponsible').value = '';
+  document.getElementById('inputDeadline').value = '';
+  document.getElementById('projectModal').style.display = 'flex';
+}
+
+function editProject(id) {
+  const p = cachedProjects.find(x => x.id === id);
+  if (!p) return;
+  editingProjectId = id;
+  document.getElementById('projectModalTitle').textContent = 'Editar Projeto';
+  document.getElementById('inputName').value = p.name || '';
+  document.getElementById('inputDesc').value = p.description || '';
+  document.getElementById('inputBudget').value = p.budget || '';
+  document.getElementById('inputSpent').value = p.spent || '';
+  document.getElementById('inputStatus').value = p.status || 'active';
+  document.getElementById('inputResponsible').value = p.responsible || '';
+  document.getElementById('inputDeadline').value = p.deadline ? p.deadline.substring(0, 10) : '';
+  document.getElementById('projectModal').style.display = 'flex';
+}
+
+async function saveProject() {
   const name = document.getElementById('inputName').value;
   const description = document.getElementById('inputDesc').value;
   const budget = parseFloat(document.getElementById('inputBudget').value) || 0;
+  const spent = parseFloat(document.getElementById('inputSpent').value) || 0;
+  const status = document.getElementById('inputStatus').value;
   const responsible = document.getElementById('inputResponsible').value;
   const deadline = document.getElementById('inputDeadline').value;
   const error = document.getElementById('projectError');
   if (!name) { error.textContent = 'Nome do projeto e obrigatorio'; error.style.display = 'block'; return; }
   error.style.display = 'none';
+  const body = { name, description, budget, spent, status, responsible, deadline: deadline || undefined };
   try {
-    const res = await fetch(API + '/api/v1/projects', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ name, description, budget, responsible, deadline: deadline || undefined }) });
-    if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Erro ao criar'); }
-    closeModal();
-    document.getElementById('inputName').value = '';
-    document.getElementById('inputDesc').value = '';
-    document.getElementById('inputBudget').value = '';
-    document.getElementById('inputResponsible').value = '';
-    document.getElementById('inputDeadline').value = '';
-    loadDashboard();
+    const url = editingProjectId ? API + '/api/v1/projects/' + editingProjectId : API + '/api/v1/projects';
+    const method = editingProjectId ? 'PUT' : 'POST';
+    const res = await fetch(url, { method, headers: apiHeaders(), body: JSON.stringify(body) });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Erro ao salvar'); }
+    closeModal('projectModal');
+    loadProjetosView();
   } catch (e) { error.textContent = e.message; error.style.display = 'block'; }
 }
 
+async function deleteProject(id) {
+  if (!confirm('Tem certeza que deseja excluir este projeto? Todas as tarefas e alertas vinculados serao removidos.')) return;
+  try {
+    await fetch(API + '/api/v1/projects/' + id, { method: 'DELETE', headers: apiHeaders() });
+    loadProjetosView();
+  } catch (e) { alert('Erro ao excluir projeto'); }
+}
+
+// ============ TAREFAS ============
+async function loadTarefasView() {
+  const c = document.getElementById('tarefasTable');
+  try {
+    const [taskRes, projRes] = await Promise.all([
+      fetch(API + '/api/v1/tasks', { headers: apiHeaders() }),
+      fetch(API + '/api/v1/projects', { headers: apiHeaders() })
+    ]);
+    const tasks = await taskRes.json();
+    cachedProjects = await projRes.json();
+    if (!tasks || tasks.length === 0) { c.innerHTML = '<div class="loading">Nenhuma tarefa cadastrada</div>'; return; }
+    let h = '<table class="table-projects"><thead><tr><th>Titulo</th><th>Projeto</th><th>Status</th><th>Prioridade</th><th>Responsavel</th><th>Prazo</th><th>Acoes</th></tr></thead><tbody>';
+    tasks.forEach(t => {
+      const statusLabel = { pending: 'Pendente', in_progress: 'Em andamento', done: 'Concluida' }[t.status] || t.status;
+      const prioLabel = { low: 'Baixa', medium: 'Media', high: 'Alta' }[t.priority] || t.priority;
+      h += '<tr><td><strong>' + t.title + '</strong></td><td>' + (t.project ? t.project.name : '-') + '</td>'
+        + '<td><span class="status-' + t.status + '">' + statusLabel + '</span></td>'
+        + '<td><span class="priority-' + t.priority + '">' + prioLabel + '</span></td>'
+        + '<td>' + (t.responsible || '-') + '</td><td>' + fmtDate(t.deadline) + '</td>'
+        + '<td><button class="btn btn-sm btn-secondary" onclick="editTask(\'' + t.id + '\')">Editar</button> <button class="btn btn-sm btn-danger" onclick="deleteTask(\'' + t.id + '\')">Excluir</button></td></tr>';
+    });
+    h += '</tbody></table>';
+    c.innerHTML = h;
+    window._cachedTasks = tasks;
+  } catch (e) { c.innerHTML = '<div class="loading">Erro ao carregar tarefas</div>'; }
+}
+
+function fillTaskProjectSelect(selectedId) {
+  const sel = document.getElementById('taskProject');
+  sel.innerHTML = cachedProjects.map(p => '<option value="' + p.id + '"' + (p.id === selectedId ? ' selected' : '') + '>' + p.name + '</option>').join('');
+}
+
+function openTaskModal() {
+  editingTaskId = null;
+  document.getElementById('taskModalTitle').textContent = 'Nova Tarefa';
+  document.getElementById('taskTitle').value = '';
+  document.getElementById('taskDesc').value = '';
+  fillTaskProjectSelect(null);
+  document.getElementById('taskStatus').value = 'pending';
+  document.getElementById('taskPriority').value = 'medium';
+  document.getElementById('taskResponsible').value = '';
+  document.getElementById('taskDeadline').value = '';
+  document.getElementById('taskModal').style.display = 'flex';
+}
+
+function editTask(id) {
+  const t = (window._cachedTasks || []).find(x => x.id === id);
+  if (!t) return;
+  editingTaskId = id;
+  document.getElementById('taskModalTitle').textContent = 'Editar Tarefa';
+  document.getElementById('taskTitle').value = t.title || '';
+  document.getElementById('taskDesc').value = t.description || '';
+  fillTaskProjectSelect(t.projectId);
+  document.getElementById('taskStatus').value = t.status || 'pending';
+  document.getElementById('taskPriority').value = t.priority || 'medium';
+  document.getElementById('taskResponsible').value = t.responsible || '';
+  document.getElementById('taskDeadline').value = t.deadline ? t.deadline.substring(0, 10) : '';
+  document.getElementById('taskModal').style.display = 'flex';
+}
+
+async function saveTask() {
+  const title = document.getElementById('taskTitle').value;
+  const description = document.getElementById('taskDesc').value;
+  const projectId = document.getElementById('taskProject').value;
+  const status = document.getElementById('taskStatus').value;
+  const priority = document.getElementById('taskPriority').value;
+  const responsible = document.getElementById('taskResponsible').value;
+  const deadline = document.getElementById('taskDeadline').value;
+  const error = document.getElementById('taskError');
+  if (!title) { error.textContent = 'Titulo e obrigatorio'; error.style.display = 'block'; return; }
+  if (!projectId) { error.textContent = 'Selecione um projeto'; error.style.display = 'block'; return; }
+  error.style.display = 'none';
+  const body = { title, description, status, priority, responsible, deadline: deadline || undefined };
+  if (!editingTaskId) body.projectId = projectId;
+  try {
+    const url = editingTaskId ? API + '/api/v1/tasks/' + editingTaskId : API + '/api/v1/tasks';
+    const method = editingTaskId ? 'PUT' : 'POST';
+    const res = await fetch(url, { method, headers: apiHeaders(), body: JSON.stringify(body) });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Erro ao salvar'); }
+    closeModal('taskModal');
+    loadTarefasView();
+  } catch (e) { error.textContent = e.message; error.style.display = 'block'; }
+}
+
+async function deleteTask(id) {
+  if (!confirm('Excluir esta tarefa?')) return;
+  try {
+    await fetch(API + '/api/v1/tasks/' + id, { method: 'DELETE', headers: apiHeaders() });
+    loadTarefasView();
+  } catch (e) { alert('Erro ao excluir tarefa'); }
+}
+
+// ============ CALENDARIO ============
+async function loadCalendarioView() {
+  const cAtraso = document.getElementById('calAtrasados');
+  const cProx = document.getElementById('calProximos');
+  try {
+    const [projRes, taskRes] = await Promise.all([
+      fetch(API + '/api/v1/projects', { headers: apiHeaders() }),
+      fetch(API + '/api/v1/tasks', { headers: apiHeaders() })
+    ]);
+    const projects = await projRes.json();
+    const tasks = await taskRes.json();
+    const now = new Date();
+    const items = [];
+    projects.forEach(p => { if (p.deadline) items.push({ label: 'Projeto: ' + p.name, date: new Date(p.deadline) }); });
+    tasks.forEach(t => { if (t.deadline) items.push({ label: 'Tarefa: ' + t.title, date: new Date(t.deadline) }); });
+    const atrasados = items.filter(i => i.date < now).sort((a, b) => a.date - b.date);
+    const proximos = items.filter(i => i.date >= now).sort((a, b) => a.date - b.date);
+    cAtraso.innerHTML = atrasados.length ? atrasados.map(i => '<div class="alert-item"><div class="alert-icon alert-urgent">!</div><div><strong>' + i.label + '</strong><br>' + i.date.toLocaleDateString('pt-BR') + '</div></div>').join('') : '<div class="loading">Nenhum item atrasado</div>';
+    cProx.innerHTML = proximos.length ? proximos.map(i => '<div class="alert-item"><div class="alert-icon alert-info">i</div><div><strong>' + i.label + '</strong><br>' + i.date.toLocaleDateString('pt-BR') + '</div></div>').join('') : '<div class="loading">Nenhum prazo futuro</div>';
+  } catch (e) { cAtraso.innerHTML = '<div class="loading">Erro ao carregar</div>'; }
+}
+
+// ============ ORCAMENTO ============
+async function loadOrcamentoView() {
+  const c = document.getElementById('orcamentoTable');
+  try {
+    const res = await fetch(API + '/api/v1/projects', { headers: apiHeaders() });
+    const projects = await res.json();
+    const totalBudget = projects.reduce((s, p) => s + (p.budget || 0), 0);
+    const totalSpent = projects.reduce((s, p) => s + (p.spent || 0), 0);
+    document.getElementById('orcTotalBudget').textContent = fmtMoney(totalBudget);
+    document.getElementById('orcTotalSpent').textContent = fmtMoney(totalSpent);
+    document.getElementById('orcSaldo').textContent = fmtMoney(totalBudget - totalSpent);
+    document.getElementById('orcPct').textContent = (totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0) + '%';
+    if (!projects.length) { c.innerHTML = '<div class="loading">Nenhum projeto cadastrado</div>'; return; }
+    let h = '<table class="table-projects"><thead><tr><th>Projeto</th><th>Orcamento</th><th>Gasto</th><th>Saldo</th><th>% Utilizado</th></tr></thead><tbody>';
+    projects.forEach(p => {
+      const pct = p.budget > 0 ? Math.round((p.spent / p.budget) * 100) : 0;
+      h += '<tr><td><strong>' + p.name + '</strong></td><td>' + fmtMoney(p.budget) + '</td><td>' + fmtMoney(p.spent) + '</td><td>' + fmtMoney((p.budget || 0) - (p.spent || 0)) + '</td><td>' + pct + '%</td></tr>';
+    });
+    h += '</tbody></table>';
+    c.innerHTML = h;
+  } catch (e) { c.innerHTML = '<div class="loading">Erro ao carregar</div>'; }
+}
+
+// ============ RELATORIOS ============
+async function loadRelatoriosView() {
+  const cP = document.getElementById('repProjectStatus');
+  const cT = document.getElementById('repTaskStatus');
+  try {
+    const [projRes, taskRes] = await Promise.all([
+      fetch(API + '/api/v1/projects', { headers: apiHeaders() }),
+      fetch(API + '/api/v1/tasks', { headers: apiHeaders() })
+    ]);
+    const projects = await projRes.json();
+    const tasks = await taskRes.json();
+    const pStatusCount = {};
+    projects.forEach(p => { pStatusCount[p.status] = (pStatusCount[p.status] || 0) + 1; });
+    const pLabels = { active: 'Ativo', delayed: 'Atrasado', completed: 'Concluido' };
+    cP.innerHTML = Object.keys(pStatusCount).length ? Object.entries(pStatusCount).map(([k, v]) => '<div class="cost-bar"><div class="cost-label">' + (pLabels[k] || k) + '</div><div class="cost-track"><div class="cost-fill cost-fill-blue" style="width:' + Math.round((v / projects.length) * 100) + '%"></div></div><span style="font-size:11px;color:#6b7280;width:30px;text-align:right;">' + v + '</span></div>').join('') : '<div class="loading">Sem dados</div>';
+
+    const tStatusCount = {};
+    tasks.forEach(t => { tStatusCount[t.status] = (tStatusCount[t.status] || 0) + 1; });
+    const tLabels = { pending: 'Pendente', in_progress: 'Em andamento', done: 'Concluida' };
+    cT.innerHTML = Object.keys(tStatusCount).length ? Object.entries(tStatusCount).map(([k, v]) => '<div class="cost-bar"><div class="cost-label">' + (tLabels[k] || k) + '</div><div class="cost-track"><div class="cost-fill cost-fill-orange" style="width:' + Math.round((v / tasks.length) * 100) + '%"></div></div><span style="font-size:11px;color:#6b7280;width:30px;text-align:right;">' + v + '</span></div>').join('') : '<div class="loading">Sem dados</div>';
+  } catch (e) { cP.innerHTML = '<div class="loading">Erro ao carregar</div>'; }
+}
+
+// ============ EQUIPE ============
+async function loadEquipeView() {
+  const c = document.getElementById('equipeTable');
+  try {
+    const res = await fetch(API + '/api/v1/users', { headers: apiHeaders() });
+    const users = await res.json();
+    if (!users || users.length === 0) { c.innerHTML = '<div class="loading">Nenhum usuario</div>'; return; }
+    let h = '<table class="table-projects"><thead><tr><th>Nome</th><th>Email</th><th>Perfil</th><th>Acoes</th></tr></thead><tbody>';
+    users.forEach(u => {
+      const isSelf = currentUser && u.id === currentUser.id;
+      h += '<tr><td><strong>' + u.name + '</strong></td><td>' + u.email + '</td><td>' + (u.role === 'admin' ? 'Administrador' : 'Usuario') + '</td>'
+        + '<td>' + (isSelf ? '(voce)' : '<button class="btn btn-sm btn-danger" onclick="deleteUser(\'' + u.id + '\')">Remover</button>') + '</td></tr>';
+    });
+    h += '</tbody></table>';
+    c.innerHTML = h;
+  } catch (e) { c.innerHTML = '<div class="loading">Erro ao carregar equipe</div>'; }
+}
+
+function openUserModal() {
+  document.getElementById('userNameInput').value = '';
+  document.getElementById('userEmailInput').value = '';
+  document.getElementById('userPasswordInput').value = '';
+  document.getElementById('userRoleInput').value = 'user';
+  document.getElementById('userModal').style.display = 'flex';
+}
+
+async function saveUser() {
+  const name = document.getElementById('userNameInput').value;
+  const email = document.getElementById('userEmailInput').value;
+  const password = document.getElementById('userPasswordInput').value;
+  const role = document.getElementById('userRoleInput').value;
+  const error = document.getElementById('userError');
+  if (!name || !email || !password) { error.textContent = 'Preencha todos os campos'; error.style.display = 'block'; return; }
+  if (password.length < 6) { error.textContent = 'Senha deve ter no minimo 6 caracteres'; error.style.display = 'block'; return; }
+  error.style.display = 'none';
+  try {
+    const res = await fetch(API + '/api/v1/users', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ name, email, password, role }) });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Erro ao convidar'); }
+    closeModal('userModal');
+    loadEquipeView();
+  } catch (e) { error.textContent = e.message; error.style.display = 'block'; }
+}
+
+async function deleteUser(id) {
+  if (!confirm('Remover este usuario da organizacao?')) return;
+  try {
+    const res = await fetch(API + '/api/v1/users/' + id, { method: 'DELETE', headers: apiHeaders() });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Erro'); }
+    loadEquipeView();
+  } catch (e) { alert(e.message); }
+}
+
+// ============ CONFIGURACOES ============
+function loadConfiguracoesView() {
+  document.getElementById('cfgOrgName').value = currentUser.organization.name || '';
+  document.getElementById('cfgUserName').textContent = currentUser.name;
+  document.getElementById('cfgUserEmail').textContent = currentUser.email;
+  document.getElementById('cfgUserRole').textContent = currentUser.role === 'admin' ? 'Administrador' : 'Usuario';
+}
+
+async function saveOrganization() {
+  const name = document.getElementById('cfgOrgName').value;
+  const error = document.getElementById('orgError');
+  if (!name) { error.textContent = 'Nome e obrigatorio'; error.style.display = 'block'; return; }
+  error.style.display = 'none';
+  try {
+    const res = await fetch(API + '/api/v1/organization', { method: 'PUT', headers: apiHeaders(), body: JSON.stringify({ name }) });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || 'Erro ao salvar');
+    currentUser.organization.name = d.name;
+    document.getElementById('userOrg').textContent = d.name;
+    document.getElementById('headerOrg').textContent = 'ConstructFlow - ' + d.name;
+  } catch (e) { error.textContent = e.message; error.style.display = 'block'; }
+}
+
+// ============ INIT ============
 const token = getToken();
 if (token) {
   fetch(API + '/api/v1/auth/me', { headers: apiHeaders() }).then(r => r.json()).then(data => {
