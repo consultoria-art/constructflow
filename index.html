@@ -24,7 +24,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 .auth-box .error { color: #dc2626; font-size: 13px; margin-bottom: 12px; display: none; }
 .auth-box .loader { display: none; text-align: center; padding: 8px; color: #6b7280; font-size: 13px; }
 .dashboard { display: none; min-height: 100vh; }
-.sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: 240px; background: #1e2030; color: #fff; display: flex; flex-direction: column; padding: 20px; z-index: 10; }
+.sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: 240px; background: #1e2030; color: #fff; display: flex; flex-direction: column; padding: 20px; z-index: 10; overflow-y: auto; }
 .sidebar .logo { font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 10px; margin-bottom: 32px; }
 .sidebar .logo span { background: #4f46e5; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
 .sidebar nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
@@ -63,7 +63,6 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 .gantt-bar .gantt-track { flex: 1; height: 20px; background: #f3f4f6; border-radius: 4px; position: relative; overflow: hidden; }
 .gantt-bar .gantt-fill { height: 100%; border-radius: 4px; }
 .gantt-fill-green { background: #22c55e; }
-.gantt-fill-yellow { background: #eab308; }
 .gantt-fill-red { background: #ef4444; }
 .gantt-fill-blue { background: #3b82f6; }
 .cost-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
@@ -86,9 +85,6 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 .status-active { background: #d1fae5; color: #065f46; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
 .status-delayed { background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
 .status-completed { background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
-.status-pending { background: #fef9c3; color: #854d0e; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
-.status-in_progress { background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
-.status-done { background: #d1fae5; color: #065f46; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
 .priority-low { background: #f3f4f6; color: #374151; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
 .priority-medium { background: #ffedd5; color: #9a3412; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
 .priority-high { background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
@@ -105,7 +101,22 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 .file-input-label { display: inline-block; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; background: #e5e7eb; color: #374151; }
 .file-input-label:hover { background: #d1d5db; }
 .import-hint { font-size: 12px; color: #6b7280; margin-top: -6px; margin-bottom: 16px; }
-@media (max-width: 1024px) { .kpis { grid-template-columns: repeat(3, 1fr); } .content-grid { grid-template-columns: 1fr; } .summary-cards { grid-template-columns: repeat(2, 1fr); } }
+.kanban-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.kanban-col { background: #fff; border-radius: 12px; padding: 16px; min-height: 300px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.kanban-col h4 { font-size: 13px; font-weight: 600; margin-bottom: 12px; color: #374151; display: flex; justify-content: space-between; }
+.kanban-col.dragover { background: #eef2ff; }
+.kanban-card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; cursor: grab; font-size: 13px; }
+.kanban-card:active { cursor: grabbing; }
+.kanban-card .kc-title { font-weight: 600; margin-bottom: 4px; }
+.kanban-card .kc-meta { font-size: 11px; color: #6b7280; }
+.chat-box { max-height: 350px; overflow-y: auto; margin-bottom: 12px; }
+.chat-msg { padding: 8px 10px; border-radius: 8px; background: #f3f4f6; margin-bottom: 8px; font-size: 13px; }
+.chat-msg .cm-author { font-weight: 600; font-size: 12px; color: #4f46e5; }
+.chat-msg .cm-time { font-size: 10px; color: #9ca3af; margin-left: 6px; }
+.tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+.tab-btn { padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; background: #e5e7eb; color: #374151; }
+.tab-btn.active { background: #4f46e5; color: #fff; }
+@media (max-width: 1024px) { .kpis { grid-template-columns: repeat(3, 1fr); } .content-grid { grid-template-columns: 1fr; } .summary-cards { grid-template-columns: repeat(2, 1fr); } .kanban-board { grid-template-columns: 1fr; } }
 @media (max-width: 768px) { .sidebar { width: 60px; } .sidebar .logo span { margin: 0; } .sidebar nav a span, .sidebar .user-info div, .sidebar .logout { display: none; } .main { margin-left: 60px; padding: 16px; } .kpis { grid-template-columns: repeat(2, 1fr); } }
 </style>
 </head>
@@ -153,7 +164,9 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <nav>
 <a class="active" data-view="visaogeral" onclick="showView('visaogeral')"><span>📊</span> Visao Geral</a>
 <a data-view="projetos" onclick="showView('projetos')"><span>📁</span> Projetos</a>
-<a data-view="tarefas" onclick="showView('tarefas')"><span>✅</span> Tarefas</a>
+<a data-view="tarefas" onclick="showView('tarefas')"><span>🗂️</span> Tarefas (Kanban)</a>
+<a data-view="suprimentos" onclick="showView('suprimentos')"><span>📦</span> Suprimentos</a>
+<a data-view="comunicacao" onclick="showView('comunicacao')"><span>💬</span> Comunicacao</a>
 <a data-view="calendario" onclick="showView('calendario')"><span>📅</span> Calendario</a>
 <a data-view="orcamento" onclick="showView('orcamento')"><span>💰</span> Orcamento</a>
 <a data-view="relatorios" onclick="showView('relatorios')"><span>📄</span> Relatorios</a>
@@ -209,10 +222,10 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
     <div class="card"><div id="projetosFullTable"><div class="loading">Carregando...</div></div></div>
   </div>
 
-  <!-- TAREFAS -->
+  <!-- TAREFAS (KANBAN) -->
   <div class="view-section" id="view-tarefas">
     <div class="header">
-      <div><h1>Tarefas</h1><p>Todas as tarefas dos projetos</p></div>
+      <div><h1>Tarefas</h1><p>Arraste os cards entre as colunas para mudar o status</p></div>
       <div class="header-right">
         <label class="file-input-label">📥 Importar Excel<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importTasks(this)"></label>
         <button class="btn btn-secondary" onclick="exportTasks()">📤 Exportar Excel</button>
@@ -220,7 +233,51 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
       </div>
     </div>
     <p class="import-hint">Planilha de importacao deve ter colunas: title, project (nome do projeto), description, status, priority, responsible, deadline (AAAA-MM-DD)</p>
-    <div class="card"><div id="tarefasTable"><div class="loading">Carregando...</div></div></div>
+    <div class="kanban-board">
+      <div class="kanban-col" data-status="pending" ondragover="event.preventDefault(); this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="onKanbanDrop(event, 'pending')">
+        <h4>Pendente <span id="countPending">0</span></h4>
+        <div id="kanbanPending"></div>
+      </div>
+      <div class="kanban-col" data-status="in_progress" ondragover="event.preventDefault(); this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="onKanbanDrop(event, 'in_progress')">
+        <h4>Em Andamento <span id="countInProgress">0</span></h4>
+        <div id="kanbanInProgress"></div>
+      </div>
+      <div class="kanban-col" data-status="done" ondragover="event.preventDefault(); this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="onKanbanDrop(event, 'done')">
+        <h4>Concluida <span id="countDone">0</span></h4>
+        <div id="kanbanDone"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUPRIMENTOS -->
+  <div class="view-section" id="view-suprimentos">
+    <div class="header">
+      <div><h1>Suprimentos</h1><p>Compras, materiais e controle de entrada/saida</p></div>
+      <div class="header-right">
+        <button class="btn btn-secondary" onclick="openMaterialModal()">+ Novo Material</button>
+        <button class="btn btn-primary" onclick="openMovementModal()">+ Registrar Movimentacao</button>
+      </div>
+    </div>
+    <div class="tabs">
+      <button class="tab-btn active" id="tabMateriais" onclick="switchSuprimentosTab('materiais')">Saldo por Material</button>
+      <button class="tab-btn" id="tabMovimentacoes" onclick="switchSuprimentosTab('movimentacoes')">Historico de Movimentacoes</button>
+    </div>
+    <div class="card" id="panelMateriais"><div id="materiaisTable"><div class="loading">Carregando...</div></div></div>
+    <div class="card hidden" id="panelMovimentacoes"><div id="movimentacoesTable"><div class="loading">Carregando...</div></div></div>
+  </div>
+
+  <!-- COMUNICACAO -->
+  <div class="view-section" id="view-comunicacao">
+    <div class="header"><div><h1>Comunicacao</h1><p>Mural de mensagens por projeto - compras, suprimentos e equipe no mesmo lugar</p></div></div>
+    <div class="card">
+      <label class="field">Selecione o projeto</label>
+      <select class="input" id="comSelectProject" onchange="loadComments()"></select>
+      <div class="chat-box" id="chatBox"><div class="loading">Selecione um projeto</div></div>
+      <div style="display:flex;gap:8px;">
+        <input class="input" id="chatMessage" placeholder="Escreva uma mensagem..." style="margin-bottom:0;">
+        <button class="btn btn-primary" onclick="sendComment()">Enviar</button>
+      </div>
+    </div>
   </div>
 
   <!-- CALENDARIO -->
@@ -377,12 +434,59 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 </div>
 </div>
 
+<!-- MODAL MATERIAL -->
+<div class="modal-overlay" id="materialModal">
+<div class="modal-box">
+<h2 style="margin-bottom:20px;">Novo Material</h2>
+<div class="error" id="materialError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+<label class="field">Nome do Material</label>
+<input id="materialName" type="text" class="input" placeholder="Ex: Cimento, Areia, Vergalhao...">
+<label class="field">Unidade</label>
+<input id="materialUnit" type="text" class="input" placeholder="Ex: sc, m3, kg, un">
+<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
+<button class="btn btn-secondary" onclick="closeModal('materialModal')">Cancelar</button>
+<button class="btn btn-primary" onclick="saveMaterial()">Salvar</button>
+</div>
+</div>
+</div>
+
+<!-- MODAL MOVIMENTACAO -->
+<div class="modal-overlay" id="movementModal">
+<div class="modal-box">
+<h2 style="margin-bottom:20px;">Registrar Movimentacao</h2>
+<div class="error" id="movementError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+<label class="field">Material</label>
+<select id="movementMaterial" class="input"></select>
+<label class="field">Tipo</label>
+<select id="movementType" class="input">
+<option value="entrada">Entrada (compra/recebimento)</option>
+<option value="saida">Saida (uso na obra)</option>
+</select>
+<label class="field">Quantidade</label>
+<input id="movementQty" type="number" class="input">
+<label class="field">Valor unitario (R$, opcional)</label>
+<input id="movementValue" type="number" class="input">
+<label class="field">Projeto (opcional)</label>
+<select id="movementProject" class="input"><option value="">Nenhum</option></select>
+<label class="field">Responsavel</label>
+<input id="movementResponsible" type="text" class="input">
+<label class="field">Observacao</label>
+<input id="movementNotes" type="text" class="input">
+<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
+<button class="btn btn-secondary" onclick="closeModal('movementModal')">Cancelar</button>
+<button class="btn btn-primary" onclick="saveMovement()">Registrar</button>
+</div>
+</div>
+</div>
+
 <script>
 const API = '';
 let currentUser = null;
 let editingProjectId = null;
 let editingTaskId = null;
 let cachedProjects = [];
+let cachedMaterials = [];
+let draggedTaskId = null;
 
 function getToken() { return localStorage.getItem('cf_token'); }
 function setToken(t) { localStorage.setItem('cf_token', t); }
@@ -467,7 +571,9 @@ function showView(view) {
 
   if (view === 'visaogeral') loadDashboard();
   else if (view === 'projetos') loadProjetosView();
-  else if (view === 'tarefas') loadTarefasView();
+  else if (view === 'tarefas') loadKanban();
+  else if (view === 'suprimentos') loadSuprimentosView();
+  else if (view === 'comunicacao') loadComunicacaoView();
   else if (view === 'calendario') loadCalendarioView();
   else if (view === 'orcamento') loadOrcamentoView();
   else if (view === 'relatorios') loadRelatoriosView();
@@ -557,7 +663,7 @@ function renderProjectsTable(projects) {
   c.innerHTML = h;
 }
 
-// ============ PROJETOS (view completa) ============
+// ============ PROJETOS ============
 async function loadProjetosView() {
   const c = document.getElementById('projetosFullTable');
   try {
@@ -630,7 +736,7 @@ async function saveProject() {
 }
 
 async function deleteProject(id) {
-  if (!confirm('Tem certeza que deseja excluir este projeto? Todas as tarefas e alertas vinculados serao removidos.')) return;
+  if (!confirm('Tem certeza que deseja excluir este projeto? Todas as tarefas, alertas, mensagens e movimentacoes vinculadas serao removidas.')) return;
   try {
     await fetch(API + '/api/v1/projects/' + id, { method: 'DELETE', headers: apiHeaders() });
     loadProjetosView();
@@ -686,9 +792,8 @@ async function exportProjects() {
   XLSX.writeFile(wb, 'projetos_constructflow.xlsx');
 }
 
-// ============ TAREFAS ============
-async function loadTarefasView() {
-  const c = document.getElementById('tarefasTable');
+// ============ TAREFAS - KANBAN ============
+async function loadKanban() {
   try {
     const [taskRes, projRes] = await Promise.all([
       fetch(API + '/api/v1/tasks', { headers: apiHeaders() }),
@@ -696,21 +801,41 @@ async function loadTarefasView() {
     ]);
     const tasks = await taskRes.json();
     cachedProjects = await projRes.json();
-    if (!tasks || tasks.length === 0) { c.innerHTML = '<div class="loading">Nenhuma tarefa cadastrada</div>'; return; }
-    let h = '<table class="table-projects"><thead><tr><th>Titulo</th><th>Projeto</th><th>Status</th><th>Prioridade</th><th>Responsavel</th><th>Prazo</th><th>Acoes</th></tr></thead><tbody>';
-    tasks.forEach(t => {
-      const statusLabel = { pending: 'Pendente', in_progress: 'Em andamento', done: 'Concluida' }[t.status] || t.status;
-      const prioLabel = { low: 'Baixa', medium: 'Media', high: 'Alta' }[t.priority] || t.priority;
-      h += '<tr><td><strong>' + t.title + '</strong></td><td>' + (t.project ? t.project.name : '-') + '</td>'
-        + '<td><span class="status-' + t.status + '">' + statusLabel + '</span></td>'
-        + '<td><span class="priority-' + t.priority + '">' + prioLabel + '</span></td>'
-        + '<td>' + (t.responsible || '-') + '</td><td>' + fmtDate(t.deadline) + '</td>'
-        + '<td><button class="btn btn-sm btn-secondary" onclick="editTask(\'' + t.id + '\')">Editar</button> <button class="btn btn-sm btn-danger" onclick="deleteTask(\'' + t.id + '\')">Excluir</button></td></tr>';
-    });
-    h += '</tbody></table>';
-    c.innerHTML = h;
     window._cachedTasks = tasks;
-  } catch (e) { c.innerHTML = '<div class="loading">Erro ao carregar tarefas</div>'; }
+    renderKanbanColumn('pending', 'kanbanPending', 'countPending', tasks);
+    renderKanbanColumn('in_progress', 'kanbanInProgress', 'countInProgress', tasks);
+    renderKanbanColumn('done', 'kanbanDone', 'countDone', tasks);
+  } catch (e) { console.error(e); }
+}
+
+function renderKanbanColumn(status, containerId, countId, tasks) {
+  const filtered = tasks.filter(t => t.status === status);
+  document.getElementById(countId).textContent = '(' + filtered.length + ')';
+  const c = document.getElementById(containerId);
+  if (!filtered.length) { c.innerHTML = ''; return; }
+  c.innerHTML = filtered.map(t => {
+    const prioLabel = { low: 'Baixa', medium: 'Media', high: 'Alta' }[t.priority] || t.priority;
+    return '<div class="kanban-card" draggable="true" ondragstart="onKanbanDragStart(event, \'' + t.id + '\')" onclick="editTask(\'' + t.id + '\')">'
+      + '<div class="kc-title">' + t.title + '</div>'
+      + '<div class="kc-meta">' + (t.project ? t.project.name : '') + ' &middot; ' + prioLabel + (t.responsible ? ' &middot; ' + t.responsible : '') + (t.deadline ? ' &middot; ' + fmtDate(t.deadline) : '') + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+function onKanbanDragStart(ev, taskId) {
+  draggedTaskId = taskId;
+  ev.dataTransfer.effectAllowed = 'move';
+}
+
+async function onKanbanDrop(ev, newStatus) {
+  ev.preventDefault();
+  document.querySelectorAll('.kanban-col').forEach(el => el.classList.remove('dragover'));
+  if (!draggedTaskId) return;
+  try {
+    await fetch(API + '/api/v1/tasks/' + draggedTaskId, { method: 'PUT', headers: apiHeaders(), body: JSON.stringify({ status: newStatus }) });
+    draggedTaskId = null;
+    loadKanban();
+  } catch (e) { alert('Erro ao mover tarefa'); }
 }
 
 function fillTaskProjectSelect(selectedId) {
@@ -766,16 +891,8 @@ async function saveTask() {
     const res = await fetch(url, { method, headers: apiHeaders(), body: JSON.stringify(body) });
     if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Erro ao salvar'); }
     closeModal('taskModal');
-    loadTarefasView();
+    loadKanban();
   } catch (e) { error.textContent = e.message; error.style.display = 'block'; }
-}
-
-async function deleteTask(id) {
-  if (!confirm('Excluir esta tarefa?')) return;
-  try {
-    await fetch(API + '/api/v1/tasks/' + id, { method: 'DELETE', headers: apiHeaders() });
-    loadTarefasView();
-  } catch (e) { alert('Erro ao excluir tarefa'); }
 }
 
 function importTasks(input) {
@@ -800,7 +917,7 @@ function importTasks(input) {
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || 'Erro ao importar');
       alert(d.created + ' tarefa(s) importada(s). ' + (d.skipped ? d.skipped + ' ignorada(s) por falta de titulo ou projeto valido.' : ''));
-      loadTarefasView();
+      loadKanban();
     } catch (err) { alert('Erro ao importar planilha: ' + err.message); }
     input.value = '';
   };
@@ -815,6 +932,164 @@ async function exportTasks() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Tarefas');
   XLSX.writeFile(wb, 'tarefas_constructflow.xlsx');
+}
+
+// ============ SUPRIMENTOS ============
+function switchSuprimentosTab(tab) {
+  document.getElementById('tabMateriais').classList.toggle('active', tab === 'materiais');
+  document.getElementById('tabMovimentacoes').classList.toggle('active', tab === 'movimentacoes');
+  document.getElementById('panelMateriais').classList.toggle('hidden', tab !== 'materiais');
+  document.getElementById('panelMovimentacoes').classList.toggle('hidden', tab !== 'movimentacoes');
+  if (tab === 'movimentacoes') loadMovimentacoesTable();
+}
+
+async function loadSuprimentosView() {
+  await loadMateriaisTable();
+  const projRes = await fetch(API + '/api/v1/projects', { headers: apiHeaders() });
+  cachedProjects = await projRes.json();
+}
+
+async function loadMateriaisTable() {
+  const c = document.getElementById('materiaisTable');
+  try {
+    const res = await fetch(API + '/api/v1/materials', { headers: apiHeaders() });
+    const materials = await res.json();
+    cachedMaterials = materials;
+    if (!materials.length) { c.innerHTML = '<div class="loading">Nenhum material cadastrado</div>'; return; }
+    let h = '<table class="table-projects"><thead><tr><th>Material</th><th>Unidade</th><th>Entradas</th><th>Saidas</th><th>Saldo</th><th>Acoes</th></tr></thead><tbody>';
+    materials.forEach(m => {
+      h += '<tr><td><strong>' + m.name + '</strong>' + (m.desvio ? '<span class="deviation-badge">DESVIO</span>' : '') + '</td><td>' + m.unit + '</td><td>' + m.entradas + '</td><td>' + m.saidas + '</td><td>' + m.saldo + '</td>'
+        + '<td><button class="btn btn-sm btn-danger" onclick="deleteMaterial(\'' + m.id + '\')">Excluir</button></td></tr>';
+    });
+    h += '</tbody></table>';
+    c.innerHTML = h;
+  } catch (e) { c.innerHTML = '<div class="loading">Erro ao carregar materiais</div>'; }
+}
+
+async function loadMovimentacoesTable() {
+  const c = document.getElementById('movimentacoesTable');
+  try {
+    const res = await fetch(API + '/api/v1/movements', { headers: apiHeaders() });
+    const movements = await res.json();
+    if (!movements.length) { c.innerHTML = '<div class="loading">Nenhuma movimentacao registrada</div>'; return; }
+    let h = '<table class="table-projects"><thead><tr><th>Data</th><th>Material</th><th>Tipo</th><th>Quantidade</th><th>Projeto</th><th>Responsavel</th><th>Acoes</th></tr></thead><tbody>';
+    movements.forEach(m => {
+      h += '<tr><td>' + fmtDate(m.createdAt) + '</td><td>' + m.material.name + '</td><td>' + (m.type === 'entrada' ? 'Entrada' : 'Saida') + '</td><td>' + m.quantity + ' ' + m.material.unit + '</td><td>' + (m.project ? m.project.name : '-') + '</td><td>' + (m.responsible || '-') + '</td>'
+        + '<td><button class="btn btn-sm btn-danger" onclick="deleteMovement(\'' + m.id + '\')">Excluir</button></td></tr>';
+    });
+    h += '</tbody></table>';
+    c.innerHTML = h;
+  } catch (e) { c.innerHTML = '<div class="loading">Erro ao carregar movimentacoes</div>'; }
+}
+
+function openMaterialModal() {
+  document.getElementById('materialName').value = '';
+  document.getElementById('materialUnit').value = '';
+  document.getElementById('materialModal').style.display = 'flex';
+}
+
+async function saveMaterial() {
+  const name = document.getElementById('materialName').value;
+  const unit = document.getElementById('materialUnit').value;
+  const error = document.getElementById('materialError');
+  if (!name) { error.textContent = 'Nome e obrigatorio'; error.style.display = 'block'; return; }
+  error.style.display = 'none';
+  try {
+    const res = await fetch(API + '/api/v1/materials', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ name, unit: unit || 'un' }) });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+    closeModal('materialModal');
+    loadMateriaisTable();
+  } catch (e) { error.textContent = e.message; error.style.display = 'block'; }
+}
+
+async function deleteMaterial(id) {
+  if (!confirm('Excluir este material e todo o historico de movimentacoes dele?')) return;
+  await fetch(API + '/api/v1/materials/' + id, { method: 'DELETE', headers: apiHeaders() });
+  loadMateriaisTable();
+}
+
+async function openMovementModal() {
+  if (!cachedMaterials.length) {
+    const res = await fetch(API + '/api/v1/materials', { headers: apiHeaders() });
+    cachedMaterials = await res.json();
+  }
+  if (!cachedProjects.length) {
+    const res = await fetch(API + '/api/v1/projects', { headers: apiHeaders() });
+    cachedProjects = await res.json();
+  }
+  if (!cachedMaterials.length) { alert('Cadastre um material primeiro.'); return; }
+  document.getElementById('movementMaterial').innerHTML = cachedMaterials.map(m => '<option value="' + m.id + '">' + m.name + ' (' + m.unit + ')</option>').join('');
+  document.getElementById('movementProject').innerHTML = '<option value="">Nenhum</option>' + cachedProjects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+  document.getElementById('movementType').value = 'entrada';
+  document.getElementById('movementQty').value = '';
+  document.getElementById('movementValue').value = '';
+  document.getElementById('movementResponsible').value = '';
+  document.getElementById('movementNotes').value = '';
+  document.getElementById('movementModal').style.display = 'flex';
+}
+
+async function saveMovement() {
+  const materialId = document.getElementById('movementMaterial').value;
+  const type = document.getElementById('movementType').value;
+  const quantity = document.getElementById('movementQty').value;
+  const unitValue = document.getElementById('movementValue').value;
+  const projectId = document.getElementById('movementProject').value;
+  const responsible = document.getElementById('movementResponsible').value;
+  const notes = document.getElementById('movementNotes').value;
+  const error = document.getElementById('movementError');
+  if (!materialId || !quantity) { error.textContent = 'Material e quantidade sao obrigatorios'; error.style.display = 'block'; return; }
+  error.style.display = 'none';
+  try {
+    const res = await fetch(API + '/api/v1/movements', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ materialId, type, quantity, unitValue, projectId: projectId || undefined, responsible, notes }) });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+    closeModal('movementModal');
+    loadMateriaisTable();
+    if (!document.getElementById('panelMovimentacoes').classList.contains('hidden')) loadMovimentacoesTable();
+  } catch (e) { error.textContent = e.message; error.style.display = 'block'; }
+}
+
+async function deleteMovement(id) {
+  if (!confirm('Excluir esta movimentacao?')) return;
+  await fetch(API + '/api/v1/movements/' + id, { method: 'DELETE', headers: apiHeaders() });
+  loadMovimentacoesTable();
+  loadMateriaisTable();
+}
+
+// ============ COMUNICACAO ============
+async function loadComunicacaoView() {
+  if (!cachedProjects.length) {
+    const res = await fetch(API + '/api/v1/projects', { headers: apiHeaders() });
+    cachedProjects = await res.json();
+  }
+  const sel = document.getElementById('comSelectProject');
+  sel.innerHTML = cachedProjects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+  if (cachedProjects.length) loadComments();
+  else document.getElementById('chatBox').innerHTML = '<div class="loading">Cadastre um projeto primeiro</div>';
+}
+
+async function loadComments() {
+  const projectId = document.getElementById('comSelectProject').value;
+  if (!projectId) return;
+  const box = document.getElementById('chatBox');
+  try {
+    const res = await fetch(API + '/api/v1/projects/' + projectId + '/comments', { headers: apiHeaders() });
+    const comments = await res.json();
+    if (!comments.length) { box.innerHTML = '<div class="loading">Nenhuma mensagem ainda. Comece a conversa.</div>'; return; }
+    box.innerHTML = comments.map(c => '<div class="chat-msg"><span class="cm-author">' + c.userName + '</span><span class="cm-time">' + new Date(c.createdAt).toLocaleString('pt-BR') + '</span><div>' + c.message + '</div></div>').join('');
+    box.scrollTop = box.scrollHeight;
+  } catch (e) { box.innerHTML = '<div class="loading">Erro ao carregar mensagens</div>'; }
+}
+
+async function sendComment() {
+  const projectId = document.getElementById('comSelectProject').value;
+  const input = document.getElementById('chatMessage');
+  const message = input.value.trim();
+  if (!projectId || !message) return;
+  try {
+    await fetch(API + '/api/v1/projects/' + projectId + '/comments', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ message }) });
+    input.value = '';
+    loadComments();
+  } catch (e) { alert('Erro ao enviar mensagem'); }
 }
 
 // ============ CALENDARIO ============
