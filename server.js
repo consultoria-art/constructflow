@@ -1,77 +1,82 @@
-npm warn config production Use `--omit=dev` instead.
-> constructflow-api@1.0.0 start
-> npx prisma db push --accept-data-loss; npx prisma generate; node server.js
-npm warn config production Use `--omit=dev` instead.
-Prisma schema loaded from schema.prisma
-Datasource "db": PostgreSQL database "railway", schema "public" at "postgres.railway.internal:5432"
-Starting Container
-The database is already in sync with the Prisma schema.
-Running generate... (Use --skip-generate to skip the generators)
-Running generate... - Prisma Client
-└─────────────────────────────────────────────────────────┘
-npm warn config production Use `--omit=dev` instead.
-✔ Generated Prisma Client (v6.19.3) to ./node_modules/@prisma/client in 60ms
-┌─────────────────────────────────────────────────────────┐
-│  Update available 6.19.3 -> 7.9.1                       │
-│                                                         │
-│  This is a major update - please follow the guide at    │
-│  https://pris.ly/d/major-version-upgrade                │
-│                                                         │
-│  Run the following to update                            │
-│    npm i --save-dev prisma@latest                       │
-│    npm i @prisma/client@latest                          │
-Prisma schema loaded from schema.prisma
-✔ Generated Prisma Client (v6.19.3) to ./node_modules/@prisma/client in 45ms
-Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
-Tip: Interested in query caching in just a few lines of code? Try Accelerate today! https://pris.ly/tip-3-accelerate
-/app/server.js:157
-SyntaxError: Unexpected end of input
-    at wrapSafe (node:internal/modules/cjs/loader:1713:18)
-    at Module._compile (node:internal/modules/cjs/loader:1755:20)
-    at Object..js (node:internal/modules/cjs/loader:1913:10)
-    at Module.load (node:internal/modules/cjs/loader:1505:32)
-    at Function._load (node:internal/modules/cjs/loader:1309:12)
-    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
-    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
-    at node:internal/main/run_main_module:36:49
-Node.js v22.23.1
-npm warn config production Use `--omit=dev` instead.
-> constructflow-api@1.0.0 start
-> npx prisma db push --accept-data-loss; npx prisma generate; node server.js
-npm warn config production Use `--omit=dev` instead.
-Prisma schema loaded from schema.prisma
-Datasource "db": PostgreSQL database "railway", schema "public" at "postgres.railway.internal:5432"
-The database is already in sync with the Prisma schema.
-Running generate... (Use --skip-generate to skip the generators)
-Running generate... - Prisma Client
-✔ Generated Prisma Client (v6.19.3) to ./node_modules/@prisma/client in 58ms
-npm warn config production Use `--omit=dev` instead.
-Prisma schema loaded from schema.prisma
-✔ Generated Prisma Client (v6.19.3) to ./node_modules/@prisma/client in 71ms
-Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
-Tip: Want to turn off tips and other hints? https://pris.ly/tip-4-nohints
-Node.js v22.23.1
-    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
-    at Module._compile (node:internal/modules/cjs/loader:1755:20)
-/app/server.js:157
-    at Object..js (node:internal/modules/cjs/loader:1913:10)
-    at Module.load (node:internal/modules/cjs/loader:1505:32)
-    at node:internal/main/run_main_module:36:49
-    at Function._load (node:internal/modules/cjs/loader:1309:12)
-    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
-SyntaxError: Unexpected end of input
-    at wrapSafe (node:internal/modules/cjs/loader:1713:18)
-npm warn config production Use `--omit=dev` instead.
-> constructflow-api@1.0.0 start
-> npx prisma db push --accept-data-loss; npx prisma generate; node server.js
-npm warn config production Use `--omit=dev` instead.
-Prisma schema loaded from schema.prisma
-Datasource "db": PostgreSQL database "railway", schema "public" at "postgres.railway.internal:5432"
-The database is already in sync with the Prisma schema.
-Running generate... (Use --skip-generate to skip the generators)
-Running generate... - Prisma Client
-✔ Generated Prisma Client (v6.19.3) to ./node_modules/@prisma/client in 78ms
-npm warn config production Use `--omit=dev` instead.
-Prisma schema loaded from schema.prisma
-✔ Generated Prisma Client (v6.19.3) to ./node_modules/@prisma/client in 70ms
-Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+const { PrismaClient } = require('@prisma/client');
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+
+const prisma = new PrismaClient();
+
+function sendJSON(res, status, data) {
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(data));
+}
+
+function parseBody(req) {
+  return new Promise((resolve) => {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try { resolve(JSON.parse(body)); } catch { resolve({}); }
+    });
+  });
+}
+
+const server = http.createServer(async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
+
+  try {
+    // Frontend
+    if (req.url === '/' || req.url === '/index.html') {
+      return fs.readFile(path.join(__dirname, 'index.html'), (err, data) => {
+        if (err) return sendJSON(res, 500, { error: 'Erro ao carregar página' });
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.end(data);
+      });
+    }
+
+    // Health
+    if (req.url === '/api/v1/health' && req.method === 'GET') {
+      return sendJSON(res, 200, { status: 'ok', version: '1.0.0', name: 'ConstructFlow API' });
+    }
+
+    // Dashboard
+    if (req.url === '/api/v1/dashboard' && req.method === 'GET') {
+      const totalProjects = await prisma.project.count();
+      const delayedProjects = await prisma.project.count({ where: { status: 'delayed' } });
+      const projects = await prisma.project.findMany();
+      const totalBudget = projects.reduce((s, p) => s + (p.budget || 0), 0);
+      const totalSpent = projects.reduce((s, p) => s + (p.spent || 0), 0);
+      return sendJSON(res, 200, {
+        projetosAndamento: totalProjects,
+        atrasados: delayedProjects,
+        orcamentoVsGasto: totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0,
+        totalHoras: totalProjects * 80,
+        tarefasPendentes: 0
+      });
+    }
+
+    // Listar projetos
+    if (req.url === '/api/v1/projects' && req.method === 'GET') {
+      const projects = await prisma.project.findMany({ orderBy: { createdAt: 'desc' } });
+      return sendJSON(res, 200, projects);
+    }
+
+    // Criar projeto
+    if (req.url === '/api/v1/projects' && req.method === 'POST') {
+      const data = await parseBody(req);
+      const project = await prisma.project.create({ data });
+      return sendJSON(res, 201, project);
+    }
+
+    return sendJSON(res, 404, { error: 'Rota não encontrada' });
+  } catch (error) {
+    return sendJSON(res, 500, { error: error.message });
+  }
+});
+
+const PORT = process.env.PORT || 3001;
+server.listen(PORT, '0.0.0.0', () => console.log(`ConstructFlow API rodando na porta ${PORT}`));
