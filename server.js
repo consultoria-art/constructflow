@@ -254,7 +254,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.url === '/api/v1/tasks' && req.method === 'GET') {
-      return sendJSON(res, 200, await prisma.task.findMany({ where: { project: { organizationId: user.organizationId } }, include: { project: true }, orderBy: { createdAt: 'desc' } }));
+      return sendJSON(res, 200, await prisma.task.findMany({ where: { project: { organizationId: user.organizationId } }, include: { project: true, assignee: true }, orderBy: { createdAt: 'desc' } }));
     }
 
     if (req.url === '/api/v1/tasks' && req.method === 'POST') {
@@ -267,6 +267,7 @@ const server = http.createServer(async (req, res) => {
       const { rows } = await parseBody(req);
       if (!Array.isArray(rows)) return sendJSON(res, 400, { error: 'Formato invalido' });
       const projects = await prisma.project.findMany({ where: { organizationId: user.organizationId } });
+      const orgUsers = await prisma.user.findMany({ where: { organizationId: user.organizationId } });
       let created = 0, skipped = 0;
       for (const r of rows) {
         if (!r.title) { skipped++; continue; }
@@ -276,13 +277,18 @@ const server = http.createServer(async (req, res) => {
           if (match) projectId = match.id;
         }
         if (!projectId) { skipped++; continue; }
+        let assigneeId = null;
+        if (r.responsible) {
+          const matchUser = orgUsers.find(u => u.name.toLowerCase() === String(r.responsible).toLowerCase() || u.email.toLowerCase() === String(r.responsible).toLowerCase());
+          if (matchUser) assigneeId = matchUser.id;
+        }
         await prisma.task.create({
           data: {
             title: String(r.title),
             description: r.description ? String(r.description) : null,
             status: r.status || 'pending',
             priority: r.priority || 'medium',
-            responsible: r.responsible ? String(r.responsible) : null,
+            assigneeId,
             deadline: r.deadline ? new Date(r.deadline) : null,
             projectId
           }
