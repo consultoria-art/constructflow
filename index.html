@@ -401,7 +401,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <option value="high">Alta</option>
 </select>
 <label class="field">Responsavel</label>
-<input id="taskResponsible" type="text" class="input">
+<select id="taskAssignee" class="input"><option value="">Sem responsavel</option></select>
 <label class="field">Prazo</label>
 <input id="taskDeadline" type="date" class="input">
 <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
@@ -486,7 +486,17 @@ let editingProjectId = null;
 let editingTaskId = null;
 let cachedProjects = [];
 let cachedMaterials = [];
+let cachedUsers = [];
 let draggedTaskId = null;
+
+async function loadUsersCache() {
+  const res = await fetch(API + '/api/v1/users', { headers: apiHeaders() });
+  cachedUsers = await res.json();
+}
+function fillTaskAssigneeSelect(selectedId) {
+  const sel = document.getElementById('taskAssignee');
+  sel.innerHTML = '<option value="">Sem responsavel</option>' + cachedUsers.map(u => '<option value="' + u.id + '"' + (u.id === selectedId ? ' selected' : '') + '>' + u.name + '</option>').join('');
+}
 
 function getToken() { return localStorage.getItem('cf_token'); }
 function setToken(t) { localStorage.setItem('cf_token', t); }
@@ -817,7 +827,7 @@ function renderKanbanColumn(status, containerId, countId, tasks) {
     const prioLabel = { low: 'Baixa', medium: 'Media', high: 'Alta' }[t.priority] || t.priority;
     return '<div class="kanban-card" draggable="true" ondragstart="onKanbanDragStart(event, \'' + t.id + '\')" onclick="editTask(\'' + t.id + '\')">'
       + '<div class="kc-title">' + t.title + '</div>'
-      + '<div class="kc-meta">' + (t.project ? t.project.name : '') + ' &middot; ' + prioLabel + (t.responsible ? ' &middot; ' + t.responsible : '') + (t.deadline ? ' &middot; ' + fmtDate(t.deadline) : '') + '</div>'
+      + '<div class="kc-meta">' + (t.project ? t.project.name : '') + ' &middot; ' + prioLabel + (t.assignee ? ' &middot; ' + t.assignee.name : '') + (t.deadline ? ' &middot; ' + fmtDate(t.deadline) : '') + '</div>'
       + '</div>';
   }).join('');
 }
@@ -843,20 +853,21 @@ function fillTaskProjectSelect(selectedId) {
   sel.innerHTML = cachedProjects.map(p => '<option value="' + p.id + '"' + (p.id === selectedId ? ' selected' : '') + '>' + p.name + '</option>').join('');
 }
 
-function openTaskModal() {
+async function openTaskModal() {
   editingTaskId = null;
   document.getElementById('taskModalTitle').textContent = 'Nova Tarefa';
   document.getElementById('taskTitle').value = '';
   document.getElementById('taskDesc').value = '';
   fillTaskProjectSelect(null);
+  await loadUsersCache();
+  fillTaskAssigneeSelect(null);
   document.getElementById('taskStatus').value = 'pending';
   document.getElementById('taskPriority').value = 'medium';
-  document.getElementById('taskResponsible').value = '';
   document.getElementById('taskDeadline').value = '';
   document.getElementById('taskModal').style.display = 'flex';
 }
 
-function editTask(id) {
+async function editTask(id) {
   const t = (window._cachedTasks || []).find(x => x.id === id);
   if (!t) return;
   editingTaskId = id;
@@ -864,9 +875,10 @@ function editTask(id) {
   document.getElementById('taskTitle').value = t.title || '';
   document.getElementById('taskDesc').value = t.description || '';
   fillTaskProjectSelect(t.projectId);
+  await loadUsersCache();
+  fillTaskAssigneeSelect(t.assigneeId);
   document.getElementById('taskStatus').value = t.status || 'pending';
   document.getElementById('taskPriority').value = t.priority || 'medium';
-  document.getElementById('taskResponsible').value = t.responsible || '';
   document.getElementById('taskDeadline').value = t.deadline ? t.deadline.substring(0, 10) : '';
   document.getElementById('taskModal').style.display = 'flex';
 }
@@ -877,13 +889,13 @@ async function saveTask() {
   const projectId = document.getElementById('taskProject').value;
   const status = document.getElementById('taskStatus').value;
   const priority = document.getElementById('taskPriority').value;
-  const responsible = document.getElementById('taskResponsible').value;
+  const assigneeId = document.getElementById('taskAssignee').value;
   const deadline = document.getElementById('taskDeadline').value;
   const error = document.getElementById('taskError');
   if (!title) { error.textContent = 'Titulo e obrigatorio'; error.style.display = 'block'; return; }
   if (!projectId) { error.textContent = 'Selecione um projeto'; error.style.display = 'block'; return; }
   error.style.display = 'none';
-  const body = { title, description, status, priority, responsible, deadline: deadline || undefined };
+  const body = { title, description, status, priority, assigneeId: assigneeId || null, deadline: deadline || undefined };
   if (!editingTaskId) body.projectId = projectId;
   try {
     const url = editingTaskId ? API + '/api/v1/tasks/' + editingTaskId : API + '/api/v1/tasks';
@@ -927,7 +939,7 @@ function importTasks(input) {
 async function exportTasks() {
   const res = await fetch(API + '/api/v1/tasks', { headers: apiHeaders() });
   const tasks = await res.json();
-  const rows = tasks.map(t => ({ Titulo: t.title, Projeto: t.project ? t.project.name : '', Descricao: t.description || '', Status: t.status, Prioridade: t.priority, Responsavel: t.responsible || '', Prazo: t.deadline ? t.deadline.substring(0, 10) : '' }));
+  const rows = tasks.map(t => ({ Titulo: t.title, Projeto: t.project ? t.project.name : '', Descricao: t.description || '', Status: t.status, Prioridade: t.priority, Responsavel: t.assignee ? t.assignee.name : '', Prazo: t.deadline ? t.deadline.substring(0, 10) : '' }));
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Tarefas');
