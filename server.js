@@ -80,6 +80,16 @@ async function runAutomation(organizationId) {
     }
   }
 
+  const openRisks = await prisma.riskIssue.findMany({ where: { project: { organizationId }, status: 'aberto', type: 'risco', impact: 'alto' }, include: { project: true } });
+  for (const r of openRisks) {
+    const title = 'Risco alto em aberto: ' + r.title;
+    const exists = await prisma.alert.findFirst({ where: { projectId: r.projectId, title, read: false } });
+    if (!exists) {
+      await prisma.alert.create({ data: { projectId: r.projectId, title, message: 'Risco de alto impacto ainda esta aberto no projeto ' + r.project.name + '.', type: 'urgent' } });
+      alertsCreated++;
+    }
+  }
+
   return { alertsCreated, projectsMarkedDelayed };
 }
 
@@ -190,6 +200,7 @@ const server = http.createServer(async (req, res) => {
       const data = await parseBody(req);
       data.organizationId = user.organizationId;
       if (data.deadline) data.deadline = new Date(data.deadline);
+      if (data.startDate) data.startDate = new Date(data.startDate);
       if (data.budget !== undefined) data.budget = parseFloat(data.budget) || 0;
       if (data.spent !== undefined) data.spent = parseFloat(data.spent) || 0;
       return sendJSON(res, 201, await prisma.project.create({ data }));
@@ -237,6 +248,7 @@ const server = http.createServer(async (req, res) => {
       const id = req.url.split('/')[4];
       const data = await parseBody(req);
       if (data.deadline) data.deadline = new Date(data.deadline);
+      if (data.startDate) data.startDate = new Date(data.startDate);
       if (data.budget !== undefined) data.budget = parseFloat(data.budget) || 0;
       if (data.spent !== undefined) data.spent = parseFloat(data.spent) || 0;
       delete data.organizationId;
@@ -249,6 +261,9 @@ const server = http.createServer(async (req, res) => {
       await prisma.alert.deleteMany({ where: { projectId: id } });
       await prisma.comment.deleteMany({ where: { projectId: id } });
       await prisma.stockMovement.deleteMany({ where: { projectId: id } });
+      await prisma.expense.deleteMany({ where: { projectId: id } });
+      await prisma.riskIssue.deleteMany({ where: { projectId: id } });
+      await prisma.document.deleteMany({ where: { projectId: id } });
       await prisma.project.delete({ where: { id } });
       return sendJSON(res, 200, { success: true });
     }
@@ -260,6 +275,9 @@ const server = http.createServer(async (req, res) => {
     if (req.url === '/api/v1/tasks' && req.method === 'POST') {
       const data = await parseBody(req);
       if (data.deadline) data.deadline = new Date(data.deadline);
+      if (data.startDate) data.startDate = new Date(data.startDate);
+      if (data.progress !== undefined) data.progress = parseInt(data.progress) || 0;
+      if (data.hoursLogged !== undefined) data.hoursLogged = parseFloat(data.hoursLogged) || 0;
       return sendJSON(res, 201, await prisma.task.create({ data }));
     }
 
@@ -302,6 +320,9 @@ const server = http.createServer(async (req, res) => {
       const id = req.url.split('/')[4];
       const data = await parseBody(req);
       if (data.deadline) data.deadline = new Date(data.deadline);
+      if (data.startDate) data.startDate = new Date(data.startDate);
+      if (data.progress !== undefined) data.progress = parseInt(data.progress) || 0;
+      if (data.hoursLogged !== undefined) data.hoursLogged = parseFloat(data.hoursLogged) || 0;
       return sendJSON(res, 200, await prisma.task.update({ where: { id }, data }));
     }
 
@@ -420,6 +441,82 @@ const server = http.createServer(async (req, res) => {
     if (req.url.startsWith('/api/v1/movements/') && req.method === 'DELETE') {
       const id = req.url.split('/')[4];
       await prisma.stockMovement.delete({ where: { id } });
+      return sendJSON(res, 200, { success: true });
+    }
+
+    // ============ DESPESAS ============
+    if (req.url === '/api/v1/expenses' && req.method === 'GET') {
+      return sendJSON(res, 200, await prisma.expense.findMany({ where: { project: { organizationId: user.organizationId } }, include: { project: true }, orderBy: { date: 'desc' } }));
+    }
+
+    if (req.url === '/api/v1/expenses' && req.method === 'POST') {
+      const { description, amount, category, date, responsible, projectId } = await parseBody(req);
+      if (!description || !amount || !projectId) return sendJSON(res, 400, { error: 'Descricao, valor e projeto sao obrigatorios' });
+      const expense = await prisma.expense.create({ data: { description, amount: parseFloat(amount), category: category || null, date: date ? new Date(date) : new Date(), responsible: responsible || null, projectId } });
+      return sendJSON(res, 201, expense);
+    }
+
+    if (req.url.startsWith('/api/v1/expenses/') && req.method === 'PUT') {
+      const id = req.url.split('/')[4];
+      const data = await parseBody(req);
+      if (data.amount !== undefined) data.amount = parseFloat(data.amount) || 0;
+      if (data.date) data.date = new Date(data.date);
+      return sendJSON(res, 200, await prisma.expense.update({ where: { id }, data }));
+    }
+
+    if (req.url.startsWith('/api/v1/expenses/') && req.method === 'DELETE') {
+      const id = req.url.split('/')[4];
+      await prisma.expense.delete({ where: { id } });
+      return sendJSON(res, 200, { success: true });
+    }
+
+    // ============ RISCOS E PENDENCIAS ============
+    if (req.url === '/api/v1/risks' && req.method === 'GET') {
+      return sendJSON(res, 200, await prisma.riskIssue.findMany({ where: { project: { organizationId: user.organizationId } }, include: { project: true }, orderBy: { createdAt: 'desc' } }));
+    }
+
+    if (req.url === '/api/v1/risks' && req.method === 'POST') {
+      const { type, title, description, probability, impact, status, projectId } = await parseBody(req);
+      if (!title || !projectId) return sendJSON(res, 400, { error: 'Titulo e projeto sao obrigatorios' });
+      const risk = await prisma.riskIssue.create({ data: { type: type || 'risco', title, description: description || null, probability: probability || null, impact: impact || null, status: status || 'aberto', projectId } });
+      return sendJSON(res, 201, risk);
+    }
+
+    if (req.url.startsWith('/api/v1/risks/') && req.method === 'PUT') {
+      const id = req.url.split('/')[4];
+      const data = await parseBody(req);
+      return sendJSON(res, 200, await prisma.riskIssue.update({ where: { id }, data }));
+    }
+
+    if (req.url.startsWith('/api/v1/risks/') && req.method === 'DELETE') {
+      const id = req.url.split('/')[4];
+      await prisma.riskIssue.delete({ where: { id } });
+      return sendJSON(res, 200, { success: true });
+    }
+
+    // ============ DOCUMENTOS ============
+    if (req.url === '/api/v1/documents' && req.method === 'GET') {
+      const docs = await prisma.document.findMany({ where: { project: { organizationId: user.organizationId } }, include: { project: true }, orderBy: { createdAt: 'desc' } });
+      return sendJSON(res, 200, docs.map(d => ({ id: d.id, filename: d.filename, mimeType: d.mimeType, uploadedBy: d.uploadedBy, createdAt: d.createdAt, projectId: d.projectId, projectName: d.project.name, size: d.data.length })));
+    }
+
+    if (req.url === '/api/v1/documents' && req.method === 'POST') {
+      const { filename, mimeType, data, projectId } = await parseBody(req);
+      if (!filename || !data || !projectId) return sendJSON(res, 400, { error: 'Arquivo, nome e projeto sao obrigatorios' });
+      const doc = await prisma.document.create({ data: { filename, mimeType: mimeType || 'application/octet-stream', data, uploadedBy: user.userId, projectId } });
+      return sendJSON(res, 201, { id: doc.id, filename: doc.filename, mimeType: doc.mimeType, createdAt: doc.createdAt });
+    }
+
+    if (req.url.match(/^\/api\/v1\/documents\/[^\/]+\/download$/) && req.method === 'GET') {
+      const id = req.url.split('/')[4];
+      const doc = await prisma.document.findFirst({ where: { id, project: { organizationId: user.organizationId } } });
+      if (!doc) return sendJSON(res, 404, { error: 'Documento nao encontrado' });
+      return sendJSON(res, 200, { filename: doc.filename, mimeType: doc.mimeType, data: doc.data });
+    }
+
+    if (req.url.startsWith('/api/v1/documents/') && req.method === 'DELETE') {
+      const id = req.url.split('/')[4];
+      await prisma.document.delete({ where: { id } });
       return sendJSON(res, 200, { success: true });
     }
 
