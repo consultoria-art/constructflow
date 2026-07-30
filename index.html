@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ConstructFlow</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
@@ -35,10 +36,10 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 .sidebar .user-org { font-size: 11px; color: #9ca3af; }
 .sidebar .logout { margin-top: 10px; font-size: 12px; color: #9ca3af; cursor: pointer; text-decoration: underline; }
 .main { margin-left: 240px; padding: 24px 32px; }
-.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
 .header h1 { font-size: 24px; font-weight: 700; }
 .header p { color: #6b7280; font-size: 14px; }
-.header-right { display: flex; align-items: center; gap: 16px; }
+.header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .btn { padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; }
 .btn-primary { background: #4f46e5; color: #fff; }
 .btn-primary:hover { background: #4338ca; }
@@ -71,6 +72,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 .cost-bar .cost-fill { height: 100%; border-radius: 6px; }
 .cost-fill-blue { background: #3b82f6; }
 .cost-fill-orange { background: #f97316; }
+.cost-fill-red { background: #ef4444; }
 .alert-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid #f3f4f6; font-size: 13px; }
 .alert-item:last-child { border: none; }
 .alert-icon { width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
@@ -90,6 +92,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 .priority-low { background: #f3f4f6; color: #374151; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
 .priority-medium { background: #ffedd5; color: #9a3412; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
 .priority-high { background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+.deviation-badge { background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 600; margin-left: 6px; }
 .loading { text-align: center; padding: 40px; color: #6b7280; }
 .hidden { display: none !important; }
 .view-section { display: none; }
@@ -99,6 +102,9 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:100; align-items:center; justify-content:center; }
 .modal-box { background:#fff; border-radius:16px; padding:32px; width:480px; max-width:90%; max-height:90vh; overflow-y:auto; }
 .summary-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.file-input-label { display: inline-block; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; background: #e5e7eb; color: #374151; }
+.file-input-label:hover { background: #d1d5db; }
+.import-hint { font-size: 12px; color: #6b7280; margin-top: -6px; margin-bottom: 16px; }
 @media (max-width: 1024px) { .kpis { grid-template-columns: repeat(3, 1fr); } .content-grid { grid-template-columns: 1fr; } .summary-cards { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 768px) { .sidebar { width: 60px; } .sidebar .logo span { margin: 0; } .sidebar nav a span, .sidebar .user-info div, .sidebar .logout { display: none; } .main { margin-left: 60px; padding: 16px; } .kpis { grid-template-columns: repeat(2, 1fr); } }
 </style>
@@ -184,7 +190,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
       <div class="card"><h3>Acompanhamento de Custos</h3><div id="costChart"><div class="loading">Carregando...</div></div></div>
     </div>
     <div class="content-grid">
-      <div class="card"><h3>Alertas</h3><div id="alertsContainer"><div class="loading">Carregando...</div></div></div>
+      <div class="card"><h3>Alertas (desvios detectados automaticamente)</h3><div id="alertsContainer"><div class="loading">Carregando...</div></div></div>
       <div class="card"><h3>Projetos Recentes</h3><div id="projectsTable"><div class="loading">Carregando...</div></div></div>
     </div>
   </div>
@@ -193,8 +199,13 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
   <div class="view-section" id="view-projetos">
     <div class="header">
       <div><h1>Projetos</h1><p>Todos os projetos da organizacao</p></div>
-      <div class="header-right"><button class="btn btn-primary" onclick="openProjectModal()">+ Novo Projeto</button></div>
+      <div class="header-right">
+        <label class="file-input-label">📥 Importar Excel<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importProjects(this)"></label>
+        <button class="btn btn-secondary" onclick="exportProjects()">📤 Exportar Excel</button>
+        <button class="btn btn-primary" onclick="openProjectModal()">+ Novo Projeto</button>
+      </div>
     </div>
+    <p class="import-hint">Planilha de importacao deve ter colunas: name, description, budget, spent, status, responsible, deadline (AAAA-MM-DD)</p>
     <div class="card"><div id="projetosFullTable"><div class="loading">Carregando...</div></div></div>
   </div>
 
@@ -202,8 +213,13 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
   <div class="view-section" id="view-tarefas">
     <div class="header">
       <div><h1>Tarefas</h1><p>Todas as tarefas dos projetos</p></div>
-      <div class="header-right"><button class="btn btn-primary" onclick="openTaskModal()">+ Nova Tarefa</button></div>
+      <div class="header-right">
+        <label class="file-input-label">📥 Importar Excel<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importTasks(this)"></label>
+        <button class="btn btn-secondary" onclick="exportTasks()">📤 Exportar Excel</button>
+        <button class="btn btn-primary" onclick="openTaskModal()">+ Nova Tarefa</button>
+      </div>
     </div>
+    <p class="import-hint">Planilha de importacao deve ter colunas: title, project (nome do projeto), description, status, priority, responsible, deadline (AAAA-MM-DD)</p>
     <div class="card"><div id="tarefasTable"><div class="loading">Carregando...</div></div></div>
   </div>
 
@@ -216,7 +232,10 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 
   <!-- ORCAMENTO -->
   <div class="view-section" id="view-orcamento">
-    <div class="header"><div><h1>Orcamento</h1><p>Visao financeira dos projetos</p></div></div>
+    <div class="header">
+      <div><h1>Orcamento</h1><p>Visao financeira dos projetos</p></div>
+      <div class="header-right"><button class="btn btn-secondary" onclick="exportOrcamento()">📤 Exportar Excel</button></div>
+    </div>
     <div class="summary-cards">
       <div class="kpi-card"><div class="kpi-value" id="orcTotalBudget">R$ 0</div><div class="kpi-label">ORCAMENTO TOTAL</div></div>
       <div class="kpi-card"><div class="kpi-value" id="orcTotalSpent">R$ 0</div><div class="kpi-label">GASTO TOTAL</div></div>
@@ -228,10 +247,14 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 
   <!-- RELATORIOS -->
   <div class="view-section" id="view-relatorios">
-    <div class="header"><div><h1>Relatorios</h1><p>Resumo geral da operacao</p></div></div>
+    <div class="header"><div><h1>Relatorios</h1><p>Resumo geral e projecoes de medio/longo prazo</p></div></div>
     <div class="content-grid">
       <div class="card"><h3>Projetos por status</h3><div id="repProjectStatus"><div class="loading">Carregando...</div></div></div>
       <div class="card"><h3>Tarefas por status</h3><div id="repTaskStatus"><div class="loading">Carregando...</div></div></div>
+    </div>
+    <div class="card">
+      <h3>Projecao de gastos (baseada no ritmo atual de cada projeto)</h3>
+      <div id="projecoesTable"><div class="loading">Carregando...</div></div>
     </div>
   </div>
 
@@ -503,7 +526,8 @@ function renderCostChart(projects) {
   let h = '';
   projects.forEach(p => {
     const pct = p.budget > 0 ? Math.min(Math.round((p.spent / p.budget) * 100), 100) : 0;
-    h += '<div class="cost-bar"><div class="cost-label">' + p.name + '</div><div class="cost-track"><div class="cost-fill cost-fill-blue" style="width:' + pct + '%"></div></div><span style="font-size:11px;color:#6b7280;width:40px;text-align:right;">' + pct + '%</span></div>';
+    const over = p.budget > 0 && p.spent > p.budget;
+    h += '<div class="cost-bar"><div class="cost-label">' + p.name + '</div><div class="cost-track"><div class="cost-fill ' + (over ? 'cost-fill-red' : 'cost-fill-blue') + '" style="width:' + pct + '%"></div></div><span style="font-size:11px;color:#6b7280;width:40px;text-align:right;">' + pct + '%</span></div>';
   });
   c.innerHTML = h;
 }
@@ -545,7 +569,9 @@ async function loadProjetosView() {
     projects.forEach(p => {
       const statusClass = p.status === 'delayed' ? 'status-delayed' : p.status === 'completed' ? 'status-completed' : 'status-active';
       const statusLabel = p.status === 'delayed' ? 'Atrasado' : p.status === 'completed' ? 'Concluido' : 'Ativo';
-      h += '<tr><td><strong>' + p.name + '</strong></td><td><span class="' + statusClass + '">' + statusLabel + '</span></td><td>' + fmtMoney(p.budget) + '</td><td>' + fmtMoney(p.spent) + '</td><td>' + (p.responsible || '-') + '</td><td>' + fmtDate(p.deadline) + '</td>'
+      const custoDesvio = p.budget > 0 && p.spent > p.budget;
+      const prazoDesvio = p.deadline && new Date(p.deadline) < new Date() && p.status !== 'completed';
+      h += '<tr><td><strong>' + p.name + '</strong>' + (custoDesvio ? '<span class="deviation-badge">DESVIO CUSTO</span>' : '') + (prazoDesvio ? '<span class="deviation-badge">DESVIO PRAZO</span>' : '') + '</td><td><span class="' + statusClass + '">' + statusLabel + '</span></td><td>' + fmtMoney(p.budget) + '</td><td>' + fmtMoney(p.spent) + '</td><td>' + (p.responsible || '-') + '</td><td>' + fmtDate(p.deadline) + '</td>'
         + '<td><button class="btn btn-sm btn-secondary" onclick="editProject(\'' + p.id + '\')">Editar</button> <button class="btn btn-sm btn-danger" onclick="deleteProject(\'' + p.id + '\')">Excluir</button></td></tr>';
     });
     h += '</tbody></table>';
@@ -609,6 +635,55 @@ async function deleteProject(id) {
     await fetch(API + '/api/v1/projects/' + id, { method: 'DELETE', headers: apiHeaders() });
     loadProjetosView();
   } catch (e) { alert('Erro ao excluir projeto'); }
+}
+
+function excelDateToISO(v) {
+  if (!v) return undefined;
+  if (typeof v === 'number') {
+    const d = XLSX.SSF.parse_date_code(v);
+    return d ? (d.y + '-' + String(d.m).padStart(2, '0') + '-' + String(d.d).padStart(2, '0')) : undefined;
+  }
+  const d = new Date(v);
+  return isNaN(d) ? undefined : d.toISOString().substring(0, 10);
+}
+
+function importProjects(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet);
+      const normalized = rows.map(r => ({
+        name: r.name || r.Nome || r.Name,
+        description: r.description || r.Descricao,
+        budget: r.budget || r.Orcamento,
+        spent: r.spent || r.Gasto,
+        status: r.status || r.Status,
+        responsible: r.responsible || r.Responsavel,
+        deadline: excelDateToISO(r.deadline || r.Prazo)
+      }));
+      const res = await fetch(API + '/api/v1/projects/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: normalized }) });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Erro ao importar');
+      alert(d.created + ' projeto(s) importado(s) com sucesso.');
+      loadProjetosView();
+    } catch (err) { alert('Erro ao importar planilha: ' + err.message); }
+    input.value = '';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+async function exportProjects() {
+  const res = await fetch(API + '/api/v1/projects', { headers: apiHeaders() });
+  const projects = await res.json();
+  const rows = projects.map(p => ({ Nome: p.name, Descricao: p.description || '', Status: p.status, Orcamento: p.budget, Gasto: p.spent, Responsavel: p.responsible || '', Prazo: p.deadline ? p.deadline.substring(0, 10) : '' }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Projetos');
+  XLSX.writeFile(wb, 'projetos_constructflow.xlsx');
 }
 
 // ============ TAREFAS ============
@@ -703,6 +778,45 @@ async function deleteTask(id) {
   } catch (e) { alert('Erro ao excluir tarefa'); }
 }
 
+function importTasks(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet);
+      const normalized = rows.map(r => ({
+        title: r.title || r.Titulo || r.Title,
+        project: r.project || r.Projeto,
+        description: r.description || r.Descricao,
+        status: r.status || r.Status,
+        priority: r.priority || r.Prioridade,
+        responsible: r.responsible || r.Responsavel,
+        deadline: excelDateToISO(r.deadline || r.Prazo)
+      }));
+      const res = await fetch(API + '/api/v1/tasks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: normalized }) });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Erro ao importar');
+      alert(d.created + ' tarefa(s) importada(s). ' + (d.skipped ? d.skipped + ' ignorada(s) por falta de titulo ou projeto valido.' : ''));
+      loadTarefasView();
+    } catch (err) { alert('Erro ao importar planilha: ' + err.message); }
+    input.value = '';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+async function exportTasks() {
+  const res = await fetch(API + '/api/v1/tasks', { headers: apiHeaders() });
+  const tasks = await res.json();
+  const rows = tasks.map(t => ({ Titulo: t.title, Projeto: t.project ? t.project.name : '', Descricao: t.description || '', Status: t.status, Prioridade: t.priority, Responsavel: t.responsible || '', Prazo: t.deadline ? t.deadline.substring(0, 10) : '' }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Tarefas');
+  XLSX.writeFile(wb, 'tarefas_constructflow.xlsx');
+}
+
 // ============ CALENDARIO ============
 async function loadCalendarioView() {
   const cAtraso = document.getElementById('calAtrasados');
@@ -726,6 +840,7 @@ async function loadCalendarioView() {
 }
 
 // ============ ORCAMENTO ============
+let _cachedOrcamentoRows = [];
 async function loadOrcamentoView() {
   const c = document.getElementById('orcamentoTable');
   try {
@@ -737,6 +852,7 @@ async function loadOrcamentoView() {
     document.getElementById('orcTotalSpent').textContent = fmtMoney(totalSpent);
     document.getElementById('orcSaldo').textContent = fmtMoney(totalBudget - totalSpent);
     document.getElementById('orcPct').textContent = (totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0) + '%';
+    _cachedOrcamentoRows = projects;
     if (!projects.length) { c.innerHTML = '<div class="loading">Nenhum projeto cadastrado</div>'; return; }
     let h = '<table class="table-projects"><thead><tr><th>Projeto</th><th>Orcamento</th><th>Gasto</th><th>Saldo</th><th>% Utilizado</th></tr></thead><tbody>';
     projects.forEach(p => {
@@ -748,17 +864,29 @@ async function loadOrcamentoView() {
   } catch (e) { c.innerHTML = '<div class="loading">Erro ao carregar</div>'; }
 }
 
+function exportOrcamento() {
+  const rows = _cachedOrcamentoRows.map(p => ({ Projeto: p.name, Orcamento: p.budget, Gasto: p.spent, Saldo: (p.budget || 0) - (p.spent || 0), PctUtilizado: p.budget > 0 ? Math.round((p.spent / p.budget) * 100) : 0 }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Orcamento');
+  XLSX.writeFile(wb, 'orcamento_constructflow.xlsx');
+}
+
 // ============ RELATORIOS ============
 async function loadRelatoriosView() {
   const cP = document.getElementById('repProjectStatus');
   const cT = document.getElementById('repTaskStatus');
+  const cProj = document.getElementById('projecoesTable');
   try {
-    const [projRes, taskRes] = await Promise.all([
+    const [projRes, taskRes, dashRes] = await Promise.all([
       fetch(API + '/api/v1/projects', { headers: apiHeaders() }),
-      fetch(API + '/api/v1/tasks', { headers: apiHeaders() })
+      fetch(API + '/api/v1/tasks', { headers: apiHeaders() }),
+      fetch(API + '/api/v1/dashboard', { headers: apiHeaders() })
     ]);
     const projects = await projRes.json();
     const tasks = await taskRes.json();
+    const dash = await dashRes.json();
+
     const pStatusCount = {};
     projects.forEach(p => { pStatusCount[p.status] = (pStatusCount[p.status] || 0) + 1; });
     const pLabels = { active: 'Ativo', delayed: 'Atrasado', completed: 'Concluido' };
@@ -768,6 +896,16 @@ async function loadRelatoriosView() {
     tasks.forEach(t => { tStatusCount[t.status] = (tStatusCount[t.status] || 0) + 1; });
     const tLabels = { pending: 'Pendente', in_progress: 'Em andamento', done: 'Concluida' };
     cT.innerHTML = Object.keys(tStatusCount).length ? Object.entries(tStatusCount).map(([k, v]) => '<div class="cost-bar"><div class="cost-label">' + (tLabels[k] || k) + '</div><div class="cost-track"><div class="cost-fill cost-fill-orange" style="width:' + Math.round((v / tasks.length) * 100) + '%"></div></div><span style="font-size:11px;color:#6b7280;width:30px;text-align:right;">' + v + '</span></div>').join('') : '<div class="loading">Sem dados</div>';
+
+    const projecoes = dash.projecoes || [];
+    if (!projecoes.length) { cProj.innerHTML = '<div class="loading">Nenhum projeto em andamento para projetar</div>'; return; }
+    let h = '<table class="table-projects"><thead><tr><th>Projeto</th><th>Gasto Atual</th><th>Orcamento</th><th>Projecao Final</th><th>Tendencia</th></tr></thead><tbody>';
+    projecoes.forEach(pr => {
+      h += '<tr><td><strong>' + pr.projectName + '</strong></td><td>' + fmtMoney(pr.gastoAtual) + '</td><td>' + fmtMoney(pr.orcamento) + '</td><td>' + fmtMoney(pr.gastoProjetado) + '</td>'
+        + '<td>' + (pr.estouraOrcamento ? '<span class="deviation-badge">ESTOURO PREVISTO (+' + fmtMoney(pr.diferenca) + ')</span>' : '<span class="kpi-badge badge-green">Dentro do previsto</span>') + '</td></tr>';
+    });
+    h += '</tbody></table>';
+    cProj.innerHTML = h;
   } catch (e) { cP.innerHTML = '<div class="loading">Erro ao carregar</div>'; }
 }
 
