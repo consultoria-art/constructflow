@@ -95,6 +95,11 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 .pie-legend-item { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
 .pie-legend-dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 .curva-s-wrap svg { width: 100%; height: auto; }
+.insight-title-critical { color: #991b1b; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.insight-title-improvement { color: #9a3412; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.insight-title-positive { color: #065f46; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.insight-section { margin-bottom: 12px; }
+.insight-item { font-size: 13px; color: #374151; margin-bottom: 4px; }
 .priority-low { background: #f3f4f6; color: #374151; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
 .priority-medium { background: #ffedd5; color: #9a3412; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
 .priority-high { background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
@@ -309,6 +314,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
         <button class="btn btn-primary" onclick="openMovementModal()">+ Registrar Movimentacao</button>
       </div>
     </div>
+    <div id="suprimentosInsights"></div>
     <div class="tabs">
       <button class="tab-btn active" id="tabMateriais" onclick="switchSuprimentosTab('materiais')">Saldo por Material</button>
       <button class="tab-btn" id="tabMovimentacoes" onclick="switchSuprimentosTab('movimentacoes')">Historico de Movimentacoes</button>
@@ -323,6 +329,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
       <div><h1>Despesas</h1><p>Lancamento de gastos gerais (mao de obra, terceiros, notas fiscais)</p></div>
       <div class="header-right"><button class="btn btn-primary" onclick="openExpenseModal()">+ Nova Despesa</button></div>
     </div>
+    <div id="despesasInsights"></div>
     <div class="card"><div id="despesasTable"><div class="loading">Carregando...</div></div></div>
   </div>
 
@@ -332,6 +339,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
       <div><h1>Riscos e Pendencias</h1><p>Registro e acompanhamento de riscos e pendencias por projeto</p></div>
       <div class="header-right"><button class="btn btn-primary" onclick="openRiskModal()">+ Novo Registro</button></div>
     </div>
+    <div id="riscosInsights"></div>
     <div class="card"><div id="riscosTable"><div class="loading">Carregando...</div></div></div>
   </div>
 
@@ -1546,6 +1554,64 @@ async function exportTasks() {
   XLSX.writeFile(wb, 'tarefas_constructflow.xlsx');
 }
 
+function renderInsightPanel(containerId, insights) {
+  const c = document.getElementById(containerId);
+  const hasAny = insights.critical.length || insights.improvement.length || insights.positive.length;
+  if (!hasAny) { c.innerHTML = ''; return; }
+  let html = '<div class="card" style="margin-bottom:16px;"><h3>Pontos de Atencao</h3>';
+  if (insights.critical.length) html += '<div class="insight-section"><div class="insight-title-critical">🔴 Pontos Criticos</div>' + insights.critical.map(t => '<div class="insight-item">- ' + t + '</div>').join('') + '</div>';
+  if (insights.improvement.length) html += '<div class="insight-section"><div class="insight-title-improvement">🟠 Pontos de Melhoria</div>' + insights.improvement.map(t => '<div class="insight-item">- ' + t + '</div>').join('') + '</div>';
+  if (insights.positive.length) html += '<div class="insight-section"><div class="insight-title-positive">🟢 Pontos Positivos</div>' + insights.positive.map(t => '<div class="insight-item">- ' + t + '</div>').join('') + '</div>';
+  html += '</div>';
+  c.innerHTML = html;
+}
+
+function generateSuprimentosInsights(materials) {
+  const critical = [], improvement = [], positive = [];
+  materials.forEach(m => {
+    if (m.desvio) critical.push('Desvio em ' + m.name + ': saiu ' + m.saidas + ' ' + m.unit + ' contra ' + m.entradas + ' ' + m.unit + ' de entrada.');
+    else if (m.saldo > 0 && m.entradas > 0 && (m.saldo / m.entradas) < 0.1) improvement.push('Estoque baixo de ' + m.name + ': restam apenas ' + m.saldo + ' ' + m.unit + '.');
+    else if (m.saldo > 0) positive.push(m.name + ' com estoque saudavel (' + m.saldo + ' ' + m.unit + ' disponivel).');
+  });
+  return { critical, improvement, positive };
+}
+
+function generateDespesasInsights(expenses, projects) {
+  const critical = [], improvement = [], positive = [];
+  projects.forEach(p => {
+    if (p.budget === null || p.budget === undefined) return;
+    const projExpenses = expenses.filter(e => e.projectId === p.id).reduce((s, e) => s + e.amount, 0);
+    const totalGasto = (p.spent || 0) + projExpenses;
+    if (p.budget > 0) {
+      const pct = totalGasto / p.budget;
+      if (pct > 1) critical.push('Projeto ' + p.name + ' ultrapassou o orcamento (' + Math.round(pct * 100) + '% utilizado).');
+      else if (pct > 0.85) improvement.push('Projeto ' + p.name + ' esta proximo do limite do orcamento (' + Math.round(pct * 100) + '%).');
+      else positive.push('Projeto ' + p.name + ' dentro do orcamento (' + Math.round(pct * 100) + '% utilizado).');
+    }
+  });
+  const catTotals = {};
+  expenses.forEach(e => { const cat = e.category || 'Sem categoria'; catTotals[cat] = (catTotals[cat] || 0) + e.amount; });
+  const totalAll = expenses.reduce((s, e) => s + e.amount, 0);
+  Object.entries(catTotals).forEach(([cat, val]) => {
+    if (totalAll > 0 && (val / totalAll) > 0.5) improvement.push('Categoria "' + cat + '" concentra ' + Math.round(val / totalAll * 100) + '% das despesas - vale revisar.');
+  });
+  return { critical, improvement, positive };
+}
+
+function generateRiscosInsights(risks) {
+  const critical = [], improvement = [], positive = [];
+  risks.forEach(r => {
+    const label = r.type === 'risco' ? 'Risco' : 'Pendencia';
+    if (r.status !== 'encerrado') {
+      if (r.impact === 'alto') critical.push(label + ' de alto impacto em aberto: ' + r.title + (r.project ? ' (' + r.project.name + ')' : '') + '.');
+      else if (r.impact === 'medio') improvement.push(label + ' de impacto medio em aberto: ' + r.title + '.');
+    } else {
+      positive.push(label + ' encerrado: ' + r.title + '.');
+    }
+  });
+  return { critical, improvement, positive };
+}
+
 // ============ SUPRIMENTOS ============
 function switchSuprimentosTab(tab) {
   document.getElementById('tabMateriais').classList.toggle('active', tab === 'materiais');
@@ -1559,6 +1625,7 @@ async function loadSuprimentosView() {
   await loadMateriaisTable();
   const projRes = await fetch(API + '/api/v1/projects', { headers: apiHeaders() });
   cachedProjects = await projRes.json();
+  renderInsightPanel('suprimentosInsights', generateSuprimentosInsights(cachedMaterials));
 }
 
 async function loadMateriaisTable() {
@@ -1710,6 +1777,7 @@ async function loadDespesasView() {
     const res = await fetch(API + '/api/v1/expenses', { headers: apiHeaders() });
     const expenses = await res.json();
     window._cachedExpenses = expenses;
+    renderInsightPanel('despesasInsights', generateDespesasInsights(expenses, cachedProjects));
     if (!expenses.length) { c.innerHTML = '<div class="loading">Nenhuma despesa lancada</div>'; return; }
     let h = '<table class="table-projects"><thead><tr><th>Data</th><th>Descricao</th><th>Categoria</th><th>Valor</th><th>Projeto</th><th>Responsavel</th><th>Acoes</th></tr></thead><tbody>';
     expenses.forEach(e => {
@@ -1765,6 +1833,7 @@ async function loadRiscosView() {
   try {
     const res = await fetch(API + '/api/v1/risks', { headers: apiHeaders() });
     const risks = await res.json();
+    renderInsightPanel('riscosInsights', generateRiscosInsights(risks));
     if (!risks.length) { c.innerHTML = '<div class="loading">Nenhum risco ou pendencia registrado</div>'; return; }
     let h = '<table class="table-projects"><thead><tr><th>Tipo</th><th>Titulo</th><th>Projeto</th><th>Probabilidade</th><th>Impacto</th><th>Status</th><th>Acoes</th></tr></thead><tbody>';
     risks.forEach(r => {
