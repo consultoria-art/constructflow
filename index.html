@@ -486,6 +486,9 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <input id="inputStartDate" type="date" class="input">
 <label class="field">Prazo</label>
 <input id="inputDeadline" type="date" class="input">
+<label class="field">Anexar planilha completa do projeto (opcional)</label>
+<input id="projectMasterSheet" type="file" accept=".xlsx,.xls" class="input">
+<p class="import-hint">A planilha pode ter varias abas (Tarefas, Despesas, Riscos). A plataforma distribui cada aba automaticamente para o modulo certo.</p>
 <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
 <button class="btn btn-secondary" onclick="closeModal('projectModal')">Cancelar</button>
 <button class="btn btn-primary" onclick="saveProject()">Salvar</button>
@@ -1080,6 +1083,7 @@ function openProjectModal() {
   document.getElementById('inputStartDate').value = '';
   document.getElementById('inputDeadline').value = '';
   document.getElementById('projectFinanceFields').classList.toggle('hidden', !canSeeFinanceUI());
+  document.getElementById('projectMasterSheet').value = '';
   document.getElementById('projectModal').style.display = 'flex';
 }
 
@@ -1118,7 +1122,19 @@ async function saveProject() {
     const method = editingProjectId ? 'PUT' : 'POST';
     const res = await fetch(url, { method, headers: apiHeaders(), body: JSON.stringify(body) });
     if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Erro ao salvar'); }
+    const savedProject = await res.json();
+    const masterFile = document.getElementById('projectMasterSheet').files[0];
     closeModal('projectModal');
+    if (masterFile) {
+      const result = await processMasterSpreadsheet(savedProject.id, masterFile);
+      if (result.error) {
+        alert('Projeto salvo, mas houve erro ao ler a planilha: ' + result.error);
+      } else {
+        let msg = 'Projeto salvo. Planilha distribuida automaticamente: ' + result.tasksCreated + ' tarefa(s), ' + result.expensesCreated + ' despesa(s), ' + result.risksCreated + ' risco(s)/pendencia(s).';
+        if (result.unrecognized.length) msg += ' Abas nao reconhecidas (ignoradas): ' + result.unrecognized.join(', ') + '.';
+        alert(msg);
+      }
+    }
     loadProjetosView();
   } catch (e) { error.textContent = e.message; error.style.display = 'block'; }
 }
@@ -1195,6 +1211,93 @@ function autoMatchColumns(headers, fieldDefs) {
     if (found) { mapping[f.key] = found.raw; used.add(found.raw); }
   });
   return mapping;
+}
+
+const EXPENSE_FIELDS = [
+  { key: 'description', label: 'Descricao', required: true, synonyms: ['description', 'descricao', 'desc', 'item', 'servico'] },
+  { key: 'category', label: 'Categoria', synonyms: ['category', 'categoria', 'tipo'] },
+  { key: 'amount', label: 'Valor', required: true, synonyms: ['amount', 'valor', 'custo', 'preco', 'total'] },
+  { key: 'date', label: 'Data', synonyms: ['date', 'data'] },
+  { key: 'responsible', label: 'Responsavel', synonyms: ['responsible', 'responsavel', 'encarregado'] }
+];
+
+const RISK_FIELDS = [
+  { key: 'title', label: 'Titulo', required: true, synonyms: ['title', 'titulo', 'risco', 'pendencia', 'item'] },
+  { key: 'type', label: 'Tipo', synonyms: ['type', 'tipo'] },
+  { key: 'description', label: 'Descricao', synonyms: ['description', 'descricao', 'desc'] },
+  { key: 'probability', label: 'Probabilidade', synonyms: ['probability', 'probabilidade'] },
+  { key: 'impact', label: 'Impacto', synonyms: ['impact', 'impacto'] },
+  { key: 'status', label: 'Status', synonyms: ['status', 'situacao'] }
+];
+
+function detectSheetTarget(sheetName, headers) {
+  const n = normKey(sheetName);
+  if (['tarefas', 'tasks', 'atividades', 'servicos', 'cronograma'].some(s => n.indexOf(s) > -1)) return 'tasks';
+  if (['despesas', 'expenses', 'custos', 'gastos', 'financeiro'].some(s => n.indexOf(s) > -1)) return 'expenses';
+  if (['riscos', 'risks', 'pendencias'].some(s => n.indexOf(s) > -1)) return 'risks';
+  const normHeaders = headers.map(normKey);
+  if (normHeaders.some(h => ['titulo', 'title', 'tarefa', 'atividade'].includes(h)) && normHeaders.some(h => ['status', 'prioridade', 'priority'].includes(h))) return 'tasks';
+  if (normHeaders.some(h => ['valor', 'amount', 'custo'].includes(h))) return 'expenses';
+  if (normHeaders.some(h => ['probabilidade', 'impacto', 'impact', 'probability'].includes(h))) return 'risks';
+  return null;
+}
+
+function transformRowsGeneric(rows, fieldDefs) {
+  const headers = Object.keys(rows[0] || {});
+  const mapping = autoMatchColumns(headers, fieldDefs);
+  return rows.map(r => {
+    const obj = {};
+    fieldDefs.forEach(f => {
+      const col = mapping[f.key];
+      if (!col) return;
+      let val = r[col];
+      if (val === undefined || val === null || val === '') return;
+      if (f.key === 'amount' || f.key === 'progress' || f.key === 'hoursLogged') val = parseNumberBR(val);
+      if (f.key === 'date' || f.key === 'startDate' || f.key === 'deadline') val = excelDateToISO(val);
+      obj[f.key] = val;
+    });
+    return obj;
+  });
+}
+
+async function processMasterSpreadsheet(projectId, file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array' });
+        let tasksCreated = 0, expensesCreated = 0, risksCreated = 0;
+        const unrecognized = [];
+        for (const sheetName of wb.SheetNames) {
+          const sheet = wb.Sheets[sheetName];
+          const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+          if (!rows.length) continue;
+          const headers = Object.keys(rows[0]);
+          const target = detectSheetTarget(sheetName, headers);
+          if (target === 'tasks') {
+            const normalized = transformRowsGeneric(rows, TASK_FIELDS).filter(o => o.title).map(o => ({ ...o, projectId }));
+            const res = await fetch(API + '/api/v1/tasks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: normalized }) });
+            const d = await res.json();
+            tasksCreated += d.created || 0;
+          } else if (target === 'expenses') {
+            const normalized = transformRowsGeneric(rows, EXPENSE_FIELDS).filter(o => o.description && o.amount).map(o => ({ ...o, projectId }));
+            const res = await fetch(API + '/api/v1/expenses/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: normalized }) });
+            const d = await res.json();
+            expensesCreated += d.created || 0;
+          } else if (target === 'risks') {
+            const normalized = transformRowsGeneric(rows, RISK_FIELDS).filter(o => o.title).map(o => ({ ...o, projectId }));
+            const res = await fetch(API + '/api/v1/risks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: normalized }) });
+            const d = await res.json();
+            risksCreated += d.created || 0;
+          } else {
+            unrecognized.push(sheetName);
+          }
+        }
+        resolve({ tasksCreated, expensesCreated, risksCreated, unrecognized });
+      } catch (err) { resolve({ error: err.message }); }
+    };
+    reader.readAsArrayBuffer(file);
+  });
 }
 
 let importContext = { target: null, headers: [], rows: [], fieldDefs: [] };
