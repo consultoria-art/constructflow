@@ -189,7 +189,15 @@ const server = http.createServer(async (req, res) => {
       const tpen = await prisma.task.count({ where: { project: { organizationId: user.organizationId }, status: 'pending' } });
       const financeOk = canSeeFinance(user.role);
       const projecoes = financeOk ? calcProjecoes(pp) : [];
-      return sendJSON(res, 200, { projetosAndamento: tp, atrasados: pp.filter(p => p.status === 'delayed').length, orcamentoVsGasto: financeOk ? (tb > 0 ? Math.round((ts / tb) * 100) : 0) : null, totalHoras: tt * 8, tarefasPendentes: tpen, projecoes });
+      const isOwner = user.role === 'admin';
+      const prazoDistribuicao = isOwner ? {
+        atrasado: pp.filter(p => p.status === 'delayed').length,
+        concluido: pp.filter(p => p.status === 'completed').length,
+        ativo: pp.filter(p => p.status === 'active').length,
+        reprojetado: pp.filter(p => p.status === 'reprojetado').length
+      } : null;
+      const resumoFinanceiro = (isOwner && financeOk) ? { orcamentoTotal: tb, gastoTotal: ts } : null;
+      return sendJSON(res, 200, { projetosAndamento: tp, atrasados: pp.filter(p => p.status === 'delayed').length, orcamentoVsGasto: financeOk ? (tb > 0 ? Math.round((ts / tb) * 100) : 0) : null, totalHoras: tt * 8, tarefasPendentes: tpen, projecoes, prazoDistribuicao, resumoFinanceiro });
     }
 
     if (req.url === '/api/v1/automation/run' && req.method === 'POST') {
