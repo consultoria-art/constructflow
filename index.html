@@ -88,6 +88,13 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 .status-active { background: #d1fae5; color: #065f46; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
 .status-delayed { background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
 .status-completed { background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+.status-reprojetado { background: #ede9fe; color: #6b21a8; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+.pie-wrap { display: flex; align-items: center; gap: 24px; }
+.pie-chart { width: 140px; height: 140px; border-radius: 50%; flex-shrink: 0; }
+.pie-legend { font-size: 12px; color: #374151; }
+.pie-legend-item { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.pie-legend-dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.curva-s-wrap svg { width: 100%; height: auto; }
 .priority-low { background: #f3f4f6; color: #374151; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
 .priority-medium { background: #ffedd5; color: #9a3412; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
 .priority-high { background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
@@ -222,6 +229,10 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
       <div class="kpi-card"><div class="kpi-value" id="kpiHoras">0</div><div class="kpi-label">TOTAL DE HORAS</div><span class="kpi-badge badge-orange">Horas registradas</span></div>
       <div class="kpi-card"><div class="kpi-value" id="kpiTarefas">0</div><div class="kpi-label">TAREFAS PENDENTES</div><span class="kpi-badge badge-red">A fazer</span></div>
     </div>
+    <div class="content-grid" id="ownerSummarySection">
+      <div class="card"><h3>Resumo Financeiro (Orcamento x Gasto)</h3><div id="pieFinanceiro"><div class="loading">Carregando...</div></div></div>
+      <div class="card"><h3>Resumo de Prazos</h3><div id="pieResumoPrazos"><div class="loading">Carregando...</div></div></div>
+    </div>
     <div class="content-grid">
       <div class="card"><h3>Cronograma dos Projetos</h3><div id="ganttContainer"><div class="loading">Carregando...</div></div></div>
       <div class="card"><h3>Acompanhamento de Custos</h3><div id="costChart"><div class="loading">Carregando...</div></div></div>
@@ -244,6 +255,11 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
     </div>
     <p class="import-hint">Planilha de importacao deve ter colunas: name, description, budget, spent, status, responsible, deadline (AAAA-MM-DD)</p>
     <div class="card"><div id="projetosFullTable"><div class="loading">Carregando...</div></div></div>
+    <div class="card" style="margin-top:16px;">
+      <h3>Curva S (Planejado x Realizado)</h3>
+      <select class="input" id="curvaSProjectSelect" style="width:260px;" onchange="renderCurvaS()"></select>
+      <div class="curva-s-wrap" id="curvaSContainer"><div class="loading">Selecione um projeto</div></div>
+    </div>
   </div>
 
   <!-- TAREFAS (KANBAN) -->
@@ -462,6 +478,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <option value="active">Ativo</option>
 <option value="delayed">Atrasado</option>
 <option value="completed">Concluido</option>
+<option value="reprojetado">Reprojetado</option>
 </select>
 <label class="field">Responsavel</label>
 <input id="inputResponsible" type="text" class="input">
@@ -747,8 +764,8 @@ async function signup() {
 
 function logout() { clearToken(); location.reload(); }
 
-function canSeeFinanceUI() {
-  return currentUser && (currentUser.role === 'admin' || currentUser.role === 'coordenador');
+function isOwnerUI() {
+  return currentUser && currentUser.role === 'admin';
 }
 
 function applyRolePermissions() {
@@ -758,6 +775,7 @@ function applyRolePermissions() {
   if (despesasNav) despesasNav.classList.toggle('hidden', !financeOk);
   if (orcamentoNav) orcamentoNav.classList.toggle('hidden', !financeOk);
   document.getElementById('kpiOrcamentoCard') && document.getElementById('kpiOrcamentoCard').classList.toggle('hidden', !financeOk);
+  document.getElementById('ownerSummarySection') && document.getElementById('ownerSummarySection').classList.toggle('hidden', !isOwnerUI());
 }
 
 function enterDashboard(data) {
@@ -830,7 +848,59 @@ async function loadDashboard() {
     renderCostChart(projects);
     renderAlerts(alerts);
     renderProjectsTable(projects);
+    if (isOwnerUI()) {
+      renderPieFinanceiro(dash.resumoFinanceiro);
+      renderPiePrazos(dash.prazoDistribuicao);
+    }
   } catch (e) { console.error('Erro ao carregar dashboard:', e); }
+}
+
+function makePieGradient(slices) {
+  const total = slices.reduce((s, x) => s + x.value, 0);
+  if (total <= 0) return { gradient: 'conic-gradient(#e5e7eb 0deg 360deg)', total: 0 };
+  let acc = 0;
+  const parts = slices.filter(s => s.value > 0).map(s => {
+    const start = acc / total * 360;
+    acc += s.value;
+    const end = acc / total * 360;
+    return s.color + ' ' + start + 'deg ' + end + 'deg';
+  });
+  return { gradient: 'conic-gradient(' + parts.join(', ') + ')', total };
+}
+
+function renderPieFinanceiro(resumo) {
+  const c = document.getElementById('pieFinanceiro');
+  if (!resumo || (!resumo.orcamentoTotal && !resumo.gastoTotal)) { c.innerHTML = '<div class="loading">Sem dados financeiros ainda</div>'; return; }
+  const saldo = Math.max(0, resumo.orcamentoTotal - resumo.gastoTotal);
+  const slices = [
+    { label: 'Gasto', value: resumo.gastoTotal, color: '#ef4444' },
+    { label: 'Saldo do Orcamento', value: saldo, color: '#22c55e' }
+  ];
+  const { gradient } = makePieGradient(slices);
+  c.innerHTML = '<div class="pie-wrap">'
+    + '<div class="pie-chart" style="background:' + gradient + '"></div>'
+    + '<div class="pie-legend">'
+    + slices.map(s => '<div class="pie-legend-item"><span class="pie-legend-dot" style="background:' + s.color + '"></span>' + s.label + ': ' + fmtMoney(s.value) + '</div>').join('')
+    + '<div class="pie-legend-item"><strong>Orcamento total: ' + fmtMoney(resumo.orcamentoTotal) + '</strong></div>'
+    + '</div></div>';
+}
+
+function renderPiePrazos(dist) {
+  const c = document.getElementById('pieResumoPrazos');
+  if (!dist) { c.innerHTML = '<div class="loading">Sem dados ainda</div>'; return; }
+  const slices = [
+    { label: 'Atrasado', value: dist.atrasado, color: '#ef4444' },
+    { label: 'Atendido (Concluido)', value: dist.concluido, color: '#3b82f6' },
+    { label: 'No Prazo', value: dist.ativo, color: '#22c55e' },
+    { label: 'Reprojetado', value: dist.reprojetado, color: '#a855f7' }
+  ];
+  const { gradient, total } = makePieGradient(slices);
+  if (!total) { c.innerHTML = '<div class="loading">Nenhum projeto cadastrado</div>'; return; }
+  c.innerHTML = '<div class="pie-wrap">'
+    + '<div class="pie-chart" style="background:' + gradient + '"></div>'
+    + '<div class="pie-legend">'
+    + slices.map(s => '<div class="pie-legend-item"><span class="pie-legend-dot" style="background:' + s.color + '"></span>' + s.label + ': ' + s.value + '</div>').join('')
+    + '</div></div>';
 }
 
 function renderGantt(projects) {
@@ -865,7 +935,8 @@ function renderGantt(projects) {
     const tasks = p.tasks || [];
     const avgProgress = tasks.length ? Math.round(tasks.reduce((sum, t) => sum + (t.progress || 0), 0) / tasks.length) : (p.status === 'completed' ? 100 : 0);
     const isLate = (e < now && p.status !== 'completed') || p.status === 'delayed';
-    const realizedColor = isLate ? '#ef4444' : '#22c55e';
+    const isReprojetado = p.status === 'reprojetado';
+    const realizedColor = isLate ? '#ef4444' : isReprojetado ? '#a855f7' : '#22c55e';
     const realizedWidthPct = widthPct * (avgProgress / 100);
 
     html += '<div class="gantt-row">'
@@ -904,14 +975,21 @@ function renderAlerts(alerts) {
   c.innerHTML = h;
 }
 
+function projectStatusMeta(status) {
+  if (status === 'delayed') return { cls: 'status-delayed', label: 'Atrasado' };
+  if (status === 'completed') return { cls: 'status-completed', label: 'Concluido' };
+  if (status === 'reprojetado') return { cls: 'status-reprojetado', label: 'Reprojetado' };
+  return { cls: 'status-active', label: 'Ativo' };
+}
+
 function renderProjectsTable(projects) {
   const c = document.getElementById('projectsTable');
   if (!projects || projects.length === 0) { c.innerHTML = '<div class="loading">Nenhum projeto cadastrado</div>'; return; }
-  let h = '<table class="table-projects"><thead><tr><th>Projeto</th><th>Status</th><th>Orcamento</th><th>Gasto</th><th>Responsavel</th></tr></thead><tbody>';
+  const financeOk = canSeeFinanceUI();
+  let h = '<table class="table-projects"><thead><tr><th>Projeto</th><th>Status</th>' + (financeOk ? '<th>Orcamento</th><th>Gasto</th>' : '') + '<th>Responsavel</th></tr></thead><tbody>';
   projects.slice(0, 6).forEach(p => {
-    const statusClass = p.status === 'delayed' ? 'status-delayed' : p.status === 'completed' ? 'status-completed' : 'status-active';
-    const statusLabel = p.status === 'delayed' ? 'Atrasado' : p.status === 'completed' ? 'Concluido' : 'Ativo';
-    h += '<tr><td><strong>' + p.name + '</strong></td><td><span class="' + statusClass + '">' + statusLabel + '</span></td><td>' + fmtMoney(p.budget) + '</td><td>' + fmtMoney(p.spent) + '</td><td>' + (p.responsible || '-') + '</td></tr>';
+    const meta = projectStatusMeta(p.status);
+    h += '<tr><td><strong>' + p.name + '</strong></td><td><span class="' + meta.cls + '">' + meta.label + '</span></td>' + (financeOk ? '<td>' + fmtMoney(p.budget) + '</td><td>' + fmtMoney(p.spent) + '</td>' : '') + '<td>' + (p.responsible || '-') + '</td></tr>';
   });
   h += '</tbody></table>';
   c.innerHTML = h;
@@ -928,18 +1006,66 @@ async function loadProjetosView() {
     if (!projects || projects.length === 0) { c.innerHTML = '<div class="loading">Nenhum projeto cadastrado</div>'; return; }
     let h = '<table class="table-projects"><thead><tr><th>Projeto</th><th>Status</th>' + (financeOk ? '<th>Orcamento</th><th>Gasto</th>' : '') + '<th>Responsavel</th><th>Prazo</th><th>Acoes</th></tr></thead><tbody>';
     projects.forEach(p => {
-      const statusClass = p.status === 'delayed' ? 'status-delayed' : p.status === 'completed' ? 'status-completed' : 'status-active';
-      const statusLabel = p.status === 'delayed' ? 'Atrasado' : p.status === 'completed' ? 'Concluido' : 'Ativo';
+      const meta = projectStatusMeta(p.status);
       const custoDesvio = financeOk && p.budget > 0 && p.spent > p.budget;
       const prazoDesvio = p.deadline && new Date(p.deadline) < new Date() && p.status !== 'completed';
-      h += '<tr><td><strong>' + p.name + '</strong>' + (custoDesvio ? '<span class="deviation-badge">DESVIO CUSTO</span>' : '') + (prazoDesvio ? '<span class="deviation-badge">DESVIO PRAZO</span>' : '') + '</td><td><span class="' + statusClass + '">' + statusLabel + '</span></td>'
+      h += '<tr><td><strong>' + p.name + '</strong>' + (custoDesvio ? '<span class="deviation-badge">DESVIO CUSTO</span>' : '') + (prazoDesvio ? '<span class="deviation-badge">DESVIO PRAZO</span>' : '') + '</td><td><span class="' + meta.cls + '">' + meta.label + '</span></td>'
         + (financeOk ? '<td>' + fmtMoney(p.budget) + '</td><td>' + fmtMoney(p.spent) + '</td>' : '')
         + '<td>' + (p.responsible || '-') + '</td><td>' + fmtDate(p.deadline) + '</td>'
         + '<td><button class="btn btn-sm btn-secondary" onclick="editProject(\'' + p.id + '\')">Editar</button> <button class="btn btn-sm btn-danger" onclick="deleteProject(\'' + p.id + '\')">Excluir</button></td></tr>';
     });
     h += '</tbody></table>';
     c.innerHTML = h;
+    const sel = document.getElementById('curvaSProjectSelect');
+    const prevVal = sel.value;
+    sel.innerHTML = projects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+    if (prevVal && projects.some(p => p.id === prevVal)) sel.value = prevVal;
+    renderCurvaS();
   } catch (e) { c.innerHTML = '<div class="loading">Erro ao carregar projetos</div>'; }
+}
+
+function renderCurvaS() {
+  const projectId = document.getElementById('curvaSProjectSelect').value;
+  const container = document.getElementById('curvaSContainer');
+  const p = cachedProjects.find(x => x.id === projectId);
+  if (!p) { container.innerHTML = '<div class="loading">Selecione um projeto</div>'; return; }
+  if (!p.startDate || !p.deadline) { container.innerHTML = '<div class="loading">Cadastre Data de Inicio e Prazo neste projeto para ver a Curva S</div>'; return; }
+
+  const start = new Date(p.startDate);
+  const end = new Date(p.deadline);
+  const now = new Date();
+  const totalDays = Math.max(1, (end - start) / (1000 * 60 * 60 * 24));
+  const elapsedDays = Math.min(totalDays, Math.max(0, (now - start) / (1000 * 60 * 60 * 24)));
+  const tasks = p.tasks || [];
+  const avgProgress = tasks.length ? tasks.reduce((s, t) => s + (t.progress || 0), 0) / tasks.length : (p.status === 'completed' ? 100 : 0);
+
+  const W = 600, H = 220, pad = 30;
+  function xFor(days) { return pad + (days / totalDays) * (W - 2 * pad); }
+  function yFor(pct) { return (H - pad) - (pct / 100) * (H - 2 * pad); }
+
+  const plannedPath = 'M ' + xFor(0) + ' ' + yFor(0) + ' L ' + xFor(totalDays) + ' ' + yFor(100);
+  const realizedPath = 'M ' + xFor(0) + ' ' + yFor(0) + ' L ' + xFor(elapsedDays) + ' ' + yFor(avgProgress);
+  const nowX = xFor(elapsedDays);
+  const isLate = p.status === 'delayed' || (end < now && p.status !== 'completed');
+
+  const svg = ''
+    + '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg">'
+    + '<line x1="' + pad + '" y1="' + (H - pad) + '" x2="' + (W - pad) + '" y2="' + (H - pad) + '" stroke="#e5e7eb" stroke-width="1"/>'
+    + '<line x1="' + pad + '" y1="' + pad + '" x2="' + pad + '" y2="' + (H - pad) + '" stroke="#e5e7eb" stroke-width="1"/>'
+    + '<line x1="' + nowX + '" y1="' + pad + '" x2="' + nowX + '" y2="' + (H - pad) + '" stroke="#4f46e5" stroke-width="1" stroke-dasharray="4,4"/>'
+    + '<text x="' + nowX + '" y="' + (pad - 8) + '" font-size="10" fill="#4f46e5" text-anchor="middle">Hoje</text>'
+    + '<path d="' + plannedPath + '" fill="none" stroke="#9ca3af" stroke-width="2" stroke-dasharray="5,3"/>'
+    + '<path d="' + realizedPath + '" fill="none" stroke="' + (isLate ? '#ef4444' : '#22c55e') + '" stroke-width="3"/>'
+    + '<circle cx="' + xFor(elapsedDays) + '" cy="' + yFor(avgProgress) + '" r="4" fill="' + (isLate ? '#ef4444' : '#22c55e') + '"/>'
+    + '<text x="' + pad + '" y="' + (H - 10) + '" font-size="10" fill="#6b7280">' + start.toLocaleDateString('pt-BR') + '</text>'
+    + '<text x="' + (W - pad) + '" y="' + (H - 10) + '" font-size="10" fill="#6b7280" text-anchor="end">' + end.toLocaleDateString('pt-BR') + '</text>'
+    + '<text x="' + pad + '" y="' + (pad - 8) + '" font-size="10" fill="#6b7280">100%</text>'
+    + '</svg>';
+
+  container.innerHTML = '<div class="cal-legend" style="margin-bottom:8px;">'
+    + '<span><span class="cal-legend-dot" style="background:#9ca3af;"></span>Planejado</span>'
+    + '<span><span class="cal-legend-dot" style="background:' + (isLate ? '#ef4444' : '#22c55e') + ';"></span>Realizado (' + Math.round(avgProgress) + '%)</span>'
+    + '</div>' + svg;
 }
 
 function openProjectModal() {
