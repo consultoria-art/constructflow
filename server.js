@@ -220,6 +220,7 @@ const server = http.createServer(async (req, res) => {
             spent: parseFloat(r.spent) || 0,
             status: r.status || 'active',
             responsible: r.responsible ? String(r.responsible) : null,
+            startDate: r.startDate ? new Date(r.startDate) : null,
             deadline: r.deadline ? new Date(r.deadline) : null,
             organizationId: user.organizationId
           }
@@ -307,7 +308,10 @@ const server = http.createServer(async (req, res) => {
             status: r.status || 'pending',
             priority: r.priority || 'medium',
             assigneeId,
+            startDate: r.startDate ? new Date(r.startDate) : null,
             deadline: r.deadline ? new Date(r.deadline) : null,
+            progress: parseInt(r.progress) || 0,
+            hoursLogged: parseFloat(r.hoursLogged) || 0,
             projectId
           }
         });
