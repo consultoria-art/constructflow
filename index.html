@@ -58,13 +58,16 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 .content-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px; margin-bottom: 24px; }
 .card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
 .card h3 { font-size: 15px; font-weight: 600; margin-bottom: 16px; }
-.gantt-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.gantt-bar .gantt-label { width: 120px; font-size: 12px; color: #374151; flex-shrink: 0; }
-.gantt-bar .gantt-track { flex: 1; height: 20px; background: #f3f4f6; border-radius: 4px; position: relative; overflow: hidden; }
-.gantt-bar .gantt-fill { height: 100%; border-radius: 4px; }
-.gantt-fill-green { background: #22c55e; }
-.gantt-fill-red { background: #ef4444; }
-.gantt-fill-blue { background: #3b82f6; }
+.gantt-real { position: relative; padding: 20px 0 8px; }
+.gantt-scale-labels { display: flex; justify-content: space-between; font-size: 11px; color: #6b7280; margin-bottom: 8px; }
+.gantt-today-line { position: absolute; top: 24px; bottom: 0; width: 2px; background: #4f46e5; z-index: 5; }
+.gantt-today-label { position: absolute; top: 0; font-size: 10px; color: #4f46e5; font-weight: 600; transform: translateX(-50%); }
+.gantt-row { position: relative; margin-bottom: 16px; }
+.gantt-row-label { font-size: 12px; color: #374151; margin-bottom: 3px; font-weight: 500; }
+.gantt-track-real { position: relative; height: 20px; }
+.gantt-planned { position: absolute; top: 0; height: 20px; background: #e5e7eb; border-radius: 4px; border: 1px solid #d1d5db; }
+.gantt-realized { position: absolute; top: 0; height: 20px; border-radius: 4px; opacity: 0.9; }
+.gantt-legend { display: flex; gap: 16px; margin-bottom: 12px; font-size: 12px; color: #374151; }
 .cost-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .cost-bar .cost-label { width: 80px; font-size: 12px; color: #374151; }
 .cost-bar .cost-track { flex: 1; height: 12px; background: #f3f4f6; border-radius: 6px; overflow: hidden; }
@@ -801,14 +804,49 @@ async function loadDashboard() {
 
 function renderGantt(projects) {
   const c = document.getElementById('ganttContainer');
-  if (!projects || projects.length === 0) { c.innerHTML = '<div class="loading">Nenhum projeto cadastrado</div>'; return; }
-  let h = '';
-  projects.forEach(p => {
-    const color = p.status === 'delayed' ? 'gantt-fill-red' : p.status === 'completed' ? 'gantt-fill-blue' : 'gantt-fill-green';
-    const pct = p.budget > 0 ? Math.min(Math.round((p.spent / p.budget) * 100), 100) : 0;
-    h += '<div class="gantt-bar"><div class="gantt-label">' + p.name + '</div><div class="gantt-track"><div class="gantt-fill ' + color + '" style="width:' + pct + '%"></div></div></div>';
+  const withDates = projects.filter(p => p.startDate || p.deadline);
+  if (!withDates.length) { c.innerHTML = '<div class="loading">Cadastre datas de inicio/prazo nos projetos para ver o cronograma</div>'; return; }
+
+  const now = new Date();
+  const starts = withDates.map(p => new Date(p.startDate || p.createdAt));
+  const ends = withDates.map(p => new Date(p.deadline || now));
+  let minDate = new Date(Math.min.apply(null, starts.concat([now])));
+  let maxDate = new Date(Math.max.apply(null, ends.concat([now])));
+  minDate = new Date(minDate.getTime() - 3 * 24 * 3600 * 1000);
+  maxDate = new Date(maxDate.getTime() + 3 * 24 * 3600 * 1000);
+  const totalMs = maxDate - minDate;
+  const todayPct = ((now - minDate) / totalMs) * 100;
+
+  let html = '<div class="gantt-legend">'
+    + '<span><span class="cal-legend-dot" style="background:#d1d5db;"></span>Planejado</span>'
+    + '<span><span class="cal-legend-dot" style="background:#22c55e;"></span>Realizado (no ritmo)</span>'
+    + '<span><span class="cal-legend-dot" style="background:#ef4444;"></span>Realizado (atrasado)</span>'
+    + '</div>';
+  html += '<div class="gantt-scale-labels"><span>' + minDate.toLocaleDateString('pt-BR') + '</span><span>' + maxDate.toLocaleDateString('pt-BR') + '</span></div>';
+  html += '<div class="gantt-real">';
+  html += '<div class="gantt-today-line" style="left:' + todayPct + '%"><span class="gantt-today-label">Hoje</span></div>';
+
+  withDates.forEach(p => {
+    const s = new Date(p.startDate || p.createdAt);
+    const e = new Date(p.deadline || now);
+    const leftPct = ((s - minDate) / totalMs) * 100;
+    const widthPct = Math.max(1, ((e - s) / totalMs) * 100);
+    const tasks = p.tasks || [];
+    const avgProgress = tasks.length ? Math.round(tasks.reduce((sum, t) => sum + (t.progress || 0), 0) / tasks.length) : (p.status === 'completed' ? 100 : 0);
+    const isLate = (e < now && p.status !== 'completed') || p.status === 'delayed';
+    const realizedColor = isLate ? '#ef4444' : '#22c55e';
+    const realizedWidthPct = widthPct * (avgProgress / 100);
+
+    html += '<div class="gantt-row">'
+      + '<div class="gantt-row-label">' + p.name + ' &middot; ' + avgProgress + '% concluido</div>'
+      + '<div class="gantt-track-real">'
+      + '<div class="gantt-planned" style="left:' + leftPct + '%;width:' + widthPct + '%;"></div>'
+      + '<div class="gantt-realized" style="left:' + leftPct + '%;width:' + realizedWidthPct + '%;background:' + realizedColor + ';"></div>'
+      + '</div></div>';
   });
-  c.innerHTML = h;
+
+  html += '</div>';
+  c.innerHTML = html;
 }
 
 function renderCostChart(projects) {
