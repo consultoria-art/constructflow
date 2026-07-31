@@ -218,7 +218,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
     <div class="kpis">
       <div class="kpi-card"><div class="kpi-value" id="kpiProjetos">0</div><div class="kpi-label">PROJETOS ATIVOS</div><span class="kpi-badge badge-green">Em andamento</span></div>
       <div class="kpi-card"><div class="kpi-value" id="kpiAtrasados">0</div><div class="kpi-label">ATRASADOS</div><span class="kpi-badge badge-red">Requer atencao</span></div>
-      <div class="kpi-card"><div class="kpi-value" id="kpiOrcamento">0%</div><div class="kpi-label">ORCAMENTO VS GASTO</div><span class="kpi-badge badge-blue">% utilizado</span></div>
+      <div class="kpi-card" id="kpiOrcamentoCard"><div class="kpi-value" id="kpiOrcamento">0%</div><div class="kpi-label">ORCAMENTO VS GASTO</div><span class="kpi-badge badge-blue">% utilizado</span></div>
       <div class="kpi-card"><div class="kpi-value" id="kpiHoras">0</div><div class="kpi-label">TOTAL DE HORAS</div><span class="kpi-badge badge-orange">Horas registradas</span></div>
       <div class="kpi-card"><div class="kpi-value" id="kpiTarefas">0</div><div class="kpi-label">TAREFAS PENDENTES</div><span class="kpi-badge badge-red">A fazer</span></div>
     </div>
@@ -451,10 +451,12 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <input id="inputName" type="text" class="input">
 <label class="field">Descricao</label>
 <textarea id="inputDesc" class="input" rows="2" style="resize:vertical;"></textarea>
+<div id="projectFinanceFields">
 <label class="field">Orcamento (R$)</label>
 <input id="inputBudget" type="number" class="input">
 <label class="field">Gasto ate agora (R$)</label>
 <input id="inputSpent" type="number" class="input">
+</div>
 <label class="field">Status</label>
 <select id="inputStatus" class="input">
 <option value="active">Ativo</option>
@@ -530,8 +532,9 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <input id="userPasswordInput" type="password" class="input" placeholder="Minimo 6 caracteres">
 <label class="field">Perfil</label>
 <select id="userRoleInput" class="input">
-<option value="user">Usuario</option>
-<option value="admin">Administrador</option>
+<option value="engenheiro">Engenheiro (sem acesso financeiro)</option>
+<option value="coordenador">Coordenador (acesso total)</option>
+<option value="admin">Administrador (acesso total)</option>
 </select>
 <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
 <button class="btn btn-secondary" onclick="closeModal('userModal')">Cancelar</button>
@@ -744,6 +747,19 @@ async function signup() {
 
 function logout() { clearToken(); location.reload(); }
 
+function canSeeFinanceUI() {
+  return currentUser && (currentUser.role === 'admin' || currentUser.role === 'coordenador');
+}
+
+function applyRolePermissions() {
+  const financeOk = canSeeFinanceUI();
+  const despesasNav = document.querySelector('.sidebar nav a[data-view="despesas"]');
+  const orcamentoNav = document.querySelector('.sidebar nav a[data-view="orcamento"]');
+  if (despesasNav) despesasNav.classList.toggle('hidden', !financeOk);
+  if (orcamentoNav) orcamentoNav.classList.toggle('hidden', !financeOk);
+  document.getElementById('kpiOrcamentoCard') && document.getElementById('kpiOrcamentoCard').classList.toggle('hidden', !financeOk);
+}
+
 function enterDashboard(data) {
   currentUser = data.user;
   currentUser.organization = data.organization;
@@ -756,6 +772,7 @@ function enterDashboard(data) {
   document.getElementById('headerOrg').textContent = 'ConstructFlow - ' + data.organization.name;
   const now = new Date();
   document.getElementById('headerDate').textContent = now.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
+  applyRolePermissions();
   showView('visaogeral');
 }
 
@@ -903,18 +920,21 @@ function renderProjectsTable(projects) {
 // ============ PROJETOS ============
 async function loadProjetosView() {
   const c = document.getElementById('projetosFullTable');
+  const financeOk = canSeeFinanceUI();
   try {
     const res = await fetch(API + '/api/v1/projects', { headers: apiHeaders() });
     const projects = await res.json();
     cachedProjects = projects;
     if (!projects || projects.length === 0) { c.innerHTML = '<div class="loading">Nenhum projeto cadastrado</div>'; return; }
-    let h = '<table class="table-projects"><thead><tr><th>Projeto</th><th>Status</th><th>Orcamento</th><th>Gasto</th><th>Responsavel</th><th>Prazo</th><th>Acoes</th></tr></thead><tbody>';
+    let h = '<table class="table-projects"><thead><tr><th>Projeto</th><th>Status</th>' + (financeOk ? '<th>Orcamento</th><th>Gasto</th>' : '') + '<th>Responsavel</th><th>Prazo</th><th>Acoes</th></tr></thead><tbody>';
     projects.forEach(p => {
       const statusClass = p.status === 'delayed' ? 'status-delayed' : p.status === 'completed' ? 'status-completed' : 'status-active';
       const statusLabel = p.status === 'delayed' ? 'Atrasado' : p.status === 'completed' ? 'Concluido' : 'Ativo';
-      const custoDesvio = p.budget > 0 && p.spent > p.budget;
+      const custoDesvio = financeOk && p.budget > 0 && p.spent > p.budget;
       const prazoDesvio = p.deadline && new Date(p.deadline) < new Date() && p.status !== 'completed';
-      h += '<tr><td><strong>' + p.name + '</strong>' + (custoDesvio ? '<span class="deviation-badge">DESVIO CUSTO</span>' : '') + (prazoDesvio ? '<span class="deviation-badge">DESVIO PRAZO</span>' : '') + '</td><td><span class="' + statusClass + '">' + statusLabel + '</span></td><td>' + fmtMoney(p.budget) + '</td><td>' + fmtMoney(p.spent) + '</td><td>' + (p.responsible || '-') + '</td><td>' + fmtDate(p.deadline) + '</td>'
+      h += '<tr><td><strong>' + p.name + '</strong>' + (custoDesvio ? '<span class="deviation-badge">DESVIO CUSTO</span>' : '') + (prazoDesvio ? '<span class="deviation-badge">DESVIO PRAZO</span>' : '') + '</td><td><span class="' + statusClass + '">' + statusLabel + '</span></td>'
+        + (financeOk ? '<td>' + fmtMoney(p.budget) + '</td><td>' + fmtMoney(p.spent) + '</td>' : '')
+        + '<td>' + (p.responsible || '-') + '</td><td>' + fmtDate(p.deadline) + '</td>'
         + '<td><button class="btn btn-sm btn-secondary" onclick="editProject(\'' + p.id + '\')">Editar</button> <button class="btn btn-sm btn-danger" onclick="deleteProject(\'' + p.id + '\')">Excluir</button></td></tr>';
     });
     h += '</tbody></table>';
@@ -933,6 +953,7 @@ function openProjectModal() {
   document.getElementById('inputResponsible').value = '';
   document.getElementById('inputStartDate').value = '';
   document.getElementById('inputDeadline').value = '';
+  document.getElementById('projectFinanceFields').classList.toggle('hidden', !canSeeFinanceUI());
   document.getElementById('projectModal').style.display = 'flex';
 }
 
@@ -949,6 +970,7 @@ function editProject(id) {
   document.getElementById('inputResponsible').value = p.responsible || '';
   document.getElementById('inputStartDate').value = p.startDate ? p.startDate.substring(0, 10) : '';
   document.getElementById('inputDeadline').value = p.deadline ? p.deadline.substring(0, 10) : '';
+  document.getElementById('projectFinanceFields').classList.toggle('hidden', !canSeeFinanceUI());
   document.getElementById('projectModal').style.display = 'flex';
 }
 
@@ -1921,7 +1943,8 @@ async function loadEquipeView() {
     let h = '<table class="table-projects"><thead><tr><th>Nome</th><th>Email</th><th>Perfil</th><th>Acoes</th></tr></thead><tbody>';
     users.forEach(u => {
       const isSelf = currentUser && u.id === currentUser.id;
-      h += '<tr><td><strong>' + u.name + '</strong></td><td>' + u.email + '</td><td>' + (u.role === 'admin' ? 'Administrador' : 'Usuario') + '</td>'
+      const roleLabel = u.role === 'admin' ? 'Administrador' : u.role === 'coordenador' ? 'Coordenador' : 'Engenheiro';
+      h += '<tr><td><strong>' + u.name + '</strong></td><td>' + u.email + '</td><td>' + roleLabel + '</td>'
         + '<td>' + (isSelf ? '(voce)' : '<button class="btn btn-sm btn-danger" onclick="deleteUser(\'' + u.id + '\')">Remover</button>') + '</td></tr>';
     });
     h += '</tbody></table>';
@@ -1933,7 +1956,7 @@ function openUserModal() {
   document.getElementById('userNameInput').value = '';
   document.getElementById('userEmailInput').value = '';
   document.getElementById('userPasswordInput').value = '';
-  document.getElementById('userRoleInput').value = 'user';
+  document.getElementById('userRoleInput').value = 'engenheiro';
   document.getElementById('userModal').style.display = 'flex';
 }
 
@@ -1968,7 +1991,7 @@ function loadConfiguracoesView() {
   document.getElementById('cfgOrgName').value = currentUser.organization.name || '';
   document.getElementById('cfgUserName').textContent = currentUser.name;
   document.getElementById('cfgUserEmail').textContent = currentUser.email;
-  document.getElementById('cfgUserRole').textContent = currentUser.role === 'admin' ? 'Administrador' : 'Usuario';
+  document.getElementById('cfgUserRole').textContent = currentUser.role === 'admin' ? 'Administrador' : currentUser.role === 'coordenador' ? 'Coordenador' : 'Engenheiro';
 }
 
 async function saveOrganization() {
