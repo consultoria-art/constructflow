@@ -30,6 +30,10 @@ function getUser(req) {
   try { return jwt.verify(auth.split(' ')[1], JWT_SECRET); } catch { return null; }
 }
 
+function canSeeFinance(role) {
+  return role === 'admin' || role === 'coordenador';
+}
+
 // ============ AUTOMACAO: deteccao de desvios ============
 async function runAutomation(organizationId) {
   const projects = await prisma.project.findMany({ where: { organizationId } });
@@ -183,8 +187,9 @@ const server = http.createServer(async (req, res) => {
       const ts = pp.reduce((s, p) => s + (p.spent || 0), 0);
       const tt = await prisma.task.count({ where: { project: { organizationId: user.organizationId } } });
       const tpen = await prisma.task.count({ where: { project: { organizationId: user.organizationId }, status: 'pending' } });
-      const projecoes = calcProjecoes(pp);
-      return sendJSON(res, 200, { projetosAndamento: tp, atrasados: pp.filter(p => p.status === 'delayed').length, orcamentoVsGasto: tb > 0 ? Math.round((ts / tb) * 100) : 0, totalHoras: tt * 8, tarefasPendentes: tpen, projecoes });
+      const financeOk = canSeeFinance(user.role);
+      const projecoes = financeOk ? calcProjecoes(pp) : [];
+      return sendJSON(res, 200, { projetosAndamento: tp, atrasados: pp.filter(p => p.status === 'delayed').length, orcamentoVsGasto: financeOk ? (tb > 0 ? Math.round((ts / tb) * 100) : 0) : null, totalHoras: tt * 8, tarefasPendentes: tpen, projecoes });
     }
 
     if (req.url === '/api/v1/automation/run' && req.method === 'POST') {
@@ -193,7 +198,11 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.url === '/api/v1/projects' && req.method === 'GET') {
-      return sendJSON(res, 200, await prisma.project.findMany({ where: { organizationId: user.organizationId }, include: { tasks: true, alerts: true }, orderBy: { createdAt: 'desc' } }));
+      const projects = await prisma.project.findMany({ where: { organizationId: user.organizationId }, include: { tasks: true, alerts: true }, orderBy: { createdAt: 'desc' } });
+      if (!canSeeFinance(user.role)) {
+        return sendJSON(res, 200, projects.map(p => ({ ...p, budget: null, spent: null })));
+      }
+      return sendJSON(res, 200, projects);
     }
 
     if (req.url === '/api/v1/projects' && req.method === 'POST') {
@@ -201,8 +210,8 @@ const server = http.createServer(async (req, res) => {
       data.organizationId = user.organizationId;
       if (data.deadline) data.deadline = new Date(data.deadline);
       if (data.startDate) data.startDate = new Date(data.startDate);
-      if (data.budget !== undefined) data.budget = parseFloat(data.budget) || 0;
-      if (data.spent !== undefined) data.spent = parseFloat(data.spent) || 0;
+      if (!canSeeFinance(user.role)) { delete data.budget; delete data.spent; }
+      else { if (data.budget !== undefined) data.budget = parseFloat(data.budget) || 0; if (data.spent !== undefined) data.spent = parseFloat(data.spent) || 0; }
       return sendJSON(res, 201, await prisma.project.create({ data }));
     }
 
@@ -250,8 +259,8 @@ const server = http.createServer(async (req, res) => {
       const data = await parseBody(req);
       if (data.deadline) data.deadline = new Date(data.deadline);
       if (data.startDate) data.startDate = new Date(data.startDate);
-      if (data.budget !== undefined) data.budget = parseFloat(data.budget) || 0;
-      if (data.spent !== undefined) data.spent = parseFloat(data.spent) || 0;
+      if (!canSeeFinance(user.role)) { delete data.budget; delete data.spent; }
+      else { if (data.budget !== undefined) data.budget = parseFloat(data.budget) || 0; if (data.spent !== undefined) data.spent = parseFloat(data.spent) || 0; }
       delete data.organizationId;
       return sendJSON(res, 200, await prisma.project.update({ where: { id }, data }));
     }
@@ -450,10 +459,12 @@ const server = http.createServer(async (req, res) => {
 
     // ============ DESPESAS ============
     if (req.url === '/api/v1/expenses' && req.method === 'GET') {
+      if (!canSeeFinance(user.role)) return sendJSON(res, 403, { error: 'Sem permissao para ver dados financeiros' });
       return sendJSON(res, 200, await prisma.expense.findMany({ where: { project: { organizationId: user.organizationId } }, include: { project: true }, orderBy: { date: 'desc' } }));
     }
 
     if (req.url === '/api/v1/expenses' && req.method === 'POST') {
+      if (!canSeeFinance(user.role)) return sendJSON(res, 403, { error: 'Sem permissao para ver dados financeiros' });
       const { description, amount, category, date, responsible, projectId } = await parseBody(req);
       if (!description || !amount || !projectId) return sendJSON(res, 400, { error: 'Descricao, valor e projeto sao obrigatorios' });
       const expense = await prisma.expense.create({ data: { description, amount: parseFloat(amount), category: category || null, date: date ? new Date(date) : new Date(), responsible: responsible || null, projectId } });
@@ -461,6 +472,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.url.startsWith('/api/v1/expenses/') && req.method === 'PUT') {
+      if (!canSeeFinance(user.role)) return sendJSON(res, 403, { error: 'Sem permissao para ver dados financeiros' });
       const id = req.url.split('/')[4];
       const data = await parseBody(req);
       if (data.amount !== undefined) data.amount = parseFloat(data.amount) || 0;
@@ -469,6 +481,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.url.startsWith('/api/v1/expenses/') && req.method === 'DELETE') {
+      if (!canSeeFinance(user.role)) return sendJSON(res, 403, { error: 'Sem permissao para ver dados financeiros' });
       const id = req.url.split('/')[4];
       await prisma.expense.delete({ where: { id } });
       return sendJSON(res, 200, { success: true });
