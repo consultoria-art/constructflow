@@ -495,6 +495,21 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { success: true });
     }
 
+    if (req.url === '/api/v1/expenses/bulk' && req.method === 'POST') {
+      if (!canSeeFinance(user.role)) return sendJSON(res, 403, { error: 'Sem permissao para ver dados financeiros' });
+      const { rows } = await parseBody(req);
+      if (!Array.isArray(rows)) return sendJSON(res, 400, { error: 'Formato invalido' });
+      let created = 0;
+      for (const r of rows) {
+        if (!r.description || !r.amount || !r.projectId) continue;
+        const project = await prisma.project.findFirst({ where: { id: r.projectId, organizationId: user.organizationId } });
+        if (!project) continue;
+        await prisma.expense.create({ data: { description: String(r.description), amount: parseFloat(r.amount) || 0, category: r.category || null, date: r.date ? new Date(r.date) : new Date(), responsible: r.responsible || null, projectId: r.projectId } });
+        created++;
+      }
+      return sendJSON(res, 201, { created });
+    }
+
     // ============ RISCOS E PENDENCIAS ============
     if (req.url === '/api/v1/risks' && req.method === 'GET') {
       return sendJSON(res, 200, await prisma.riskIssue.findMany({ where: { project: { organizationId: user.organizationId } }, include: { project: true }, orderBy: { createdAt: 'desc' } }));
@@ -517,6 +532,20 @@ const server = http.createServer(async (req, res) => {
       const id = req.url.split('/')[4];
       await prisma.riskIssue.delete({ where: { id } });
       return sendJSON(res, 200, { success: true });
+    }
+
+    if (req.url === '/api/v1/risks/bulk' && req.method === 'POST') {
+      const { rows } = await parseBody(req);
+      if (!Array.isArray(rows)) return sendJSON(res, 400, { error: 'Formato invalido' });
+      let created = 0;
+      for (const r of rows) {
+        if (!r.title || !r.projectId) continue;
+        const project = await prisma.project.findFirst({ where: { id: r.projectId, organizationId: user.organizationId } });
+        if (!project) continue;
+        await prisma.riskIssue.create({ data: { type: r.type === 'pendencia' ? 'pendencia' : 'risco', title: String(r.title), description: r.description || null, probability: r.probability || null, impact: r.impact || null, status: r.status || 'aberto', projectId: r.projectId } });
+        created++;
+      }
+      return sendJSON(res, 201, { created });
     }
 
     // ============ DOCUMENTOS ============
