@@ -652,6 +652,20 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 </div>
 </div>
 
+<!-- MODAL MAPEAMENTO DE IMPORTACAO -->
+<div class="modal-overlay" id="importMappingModal">
+<div class="modal-box" style="width:560px;">
+<h2 style="margin-bottom:8px;" id="importMappingTitle">Confirmar importacao</h2>
+<p style="font-size:12px;color:#6b7280;margin-bottom:16px;">Detectamos as colunas da sua planilha automaticamente. Confira e ajuste se necessario antes de importar.</p>
+<div class="error" id="importMappingError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+<div id="importMappingFields"></div>
+<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;">
+<button class="btn btn-secondary" onclick="closeModal('importMappingModal')">Cancelar</button>
+<button class="btn btn-primary" onclick="confirmImportMapping()">Importar</button>
+</div>
+</div>
+</div>
+
 <script>
 const API = '';
 let currentUser = null;
@@ -970,42 +984,140 @@ async function deleteProject(id) {
 }
 
 function excelDateToISO(v) {
-  if (!v) return undefined;
+  if (v === undefined || v === null || v === '') return undefined;
   if (typeof v === 'number') {
     const d = XLSX.SSF.parse_date_code(v);
     return d ? (d.y + '-' + String(d.m).padStart(2, '0') + '-' + String(d.d).padStart(2, '0')) : undefined;
   }
-  const d = new Date(v);
+  if (v instanceof Date) return v.toISOString().substring(0, 10);
+  const str = String(v).trim();
+  let m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (m) return m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
+  m = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (m) return m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0');
+  const d = new Date(str);
   return isNaN(d) ? undefined : d.toISOString().substring(0, 10);
+}
+
+function parseNumberBR(v) {
+  if (v === undefined || v === null || v === '') return 0;
+  if (typeof v === 'number') return v;
+  let s = String(v).replace(/[^\d,.\-]/g, '');
+  if (s.indexOf(',') > -1 && s.indexOf('.') === -1) s = s.replace(',', '.');
+  else if (s.indexOf(',') > -1 && s.indexOf('.') > -1) s = s.replace(/\./g, '').replace(',', '.');
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+
+function normKey(s) {
+  return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+const PROJECT_FIELDS = [
+  { key: 'name', label: 'Nome do Projeto', required: true, synonyms: ['name', 'nome', 'projeto', 'project', 'obra', 'titulo', 'title', 'nomeprojeto', 'projectname'] },
+  { key: 'description', label: 'Descricao', synonyms: ['description', 'descricao', 'desc', 'obs', 'observacao', 'detalhes'] },
+  { key: 'budget', label: 'Orcamento', synonyms: ['budget', 'orcamento', 'valorprevisto', 'valortotal', 'valor', 'custoprevisto', 'custoorcado'] },
+  { key: 'spent', label: 'Gasto Atual', synonyms: ['spent', 'gasto', 'gastoatual', 'custoreal', 'valorgasto', 'custoexecutado', 'realizado'] },
+  { key: 'status', label: 'Status', synonyms: ['status', 'situacao', 'estado'] },
+  { key: 'responsible', label: 'Responsavel', synonyms: ['responsible', 'responsavel', 'encarregado', 'gestor', 'gerente'] },
+  { key: 'startDate', label: 'Data de Inicio', synonyms: ['startdate', 'datainicio', 'inicio', 'datadeinicio', 'start'] },
+  { key: 'deadline', label: 'Prazo', synonyms: ['deadline', 'prazo', 'datafinal', 'termino', 'fim', 'dataentrega', 'entrega'] }
+];
+
+const TASK_FIELDS = [
+  { key: 'title', label: 'Titulo da Tarefa', required: true, synonyms: ['title', 'titulo', 'tarefa', 'task', 'atividade', 'servico'] },
+  { key: 'project', label: 'Projeto (nome)', required: true, synonyms: ['project', 'projeto', 'obra', 'projectname', 'nomeprojeto'] },
+  { key: 'description', label: 'Descricao', synonyms: ['description', 'descricao', 'desc', 'detalhes'] },
+  { key: 'status', label: 'Status', synonyms: ['status', 'situacao', 'estado'] },
+  { key: 'priority', label: 'Prioridade', synonyms: ['priority', 'prioridade'] },
+  { key: 'responsible', label: 'Responsavel', synonyms: ['responsible', 'responsavel', 'encarregado'] },
+  { key: 'startDate', label: 'Data de Inicio', synonyms: ['startdate', 'datainicio', 'inicio', 'start'] },
+  { key: 'deadline', label: 'Prazo', synonyms: ['deadline', 'prazo', 'datafinal', 'termino', 'fim', 'entrega'] },
+  { key: 'progress', label: 'Avanco Fisico (%)', synonyms: ['progress', 'avanco', 'percentual', 'percentualconcluido', 'conclusao'] },
+  { key: 'hoursLogged', label: 'Horas Trabalhadas', synonyms: ['hours', 'horas', 'horastrabalhadas', 'hh'] }
+];
+
+function autoMatchColumns(headers, fieldDefs) {
+  const normHeaders = headers.map(h => ({ raw: h, norm: normKey(h) }));
+  const mapping = {};
+  const used = new Set();
+  fieldDefs.forEach(f => {
+    let found = normHeaders.find(h => !used.has(h.raw) && f.synonyms.some(s => h.norm === s));
+    if (!found) found = normHeaders.find(h => !used.has(h.raw) && f.synonyms.some(s => h.norm.indexOf(s) > -1 || s.indexOf(h.norm) > -1));
+    if (found) { mapping[f.key] = found.raw; used.add(found.raw); }
+  });
+  return mapping;
+}
+
+let importContext = { target: null, headers: [], rows: [], fieldDefs: [] };
+
+function openImportMapping(target, headers, rows) {
+  importContext = { target, headers, rows, fieldDefs: target === 'projects' ? PROJECT_FIELDS : TASK_FIELDS };
+  const mapping = autoMatchColumns(headers, importContext.fieldDefs);
+  document.getElementById('importMappingTitle').textContent = target === 'projects' ? 'Confirmar importacao de Projetos (' + rows.length + ' linhas)' : 'Confirmar importacao de Tarefas (' + rows.length + ' linhas)';
+  const container = document.getElementById('importMappingFields');
+  container.innerHTML = importContext.fieldDefs.map(f => {
+    const options = ['<option value="">(Nao importar)</option>'].concat(headers.map(h => '<option value="' + h + '"' + (mapping[f.key] === h ? ' selected' : '') + '>' + h + '</option>')).join('');
+    return '<label class="field">' + f.label + (f.required ? ' *' : '') + '</label><select class="input" data-fieldkey="' + f.key + '">' + options + '</select>';
+  }).join('');
+  document.getElementById('importMappingError').style.display = 'none';
+  document.getElementById('importMappingModal').style.display = 'flex';
+}
+
+function confirmImportMapping() {
+  const selects = document.querySelectorAll('#importMappingFields select');
+  const mapping = {};
+  selects.forEach(s => { if (s.value) mapping[s.dataset.fieldkey] = s.value; });
+  const requiredMissing = importContext.fieldDefs.filter(f => f.required && !mapping[f.key]);
+  const error = document.getElementById('importMappingError');
+  if (requiredMissing.length) { error.textContent = 'Selecione a coluna para: ' + requiredMissing.map(f => f.label).join(', '); error.style.display = 'block'; return; }
+  error.style.display = 'none';
+
+  const normalizedRows = importContext.rows.map(r => {
+    const obj = {};
+    importContext.fieldDefs.forEach(f => {
+      const col = mapping[f.key];
+      if (!col) return;
+      let val = r[col];
+      if (val === undefined || val === null || val === '') return;
+      if (f.key === 'budget' || f.key === 'spent' || f.key === 'progress' || f.key === 'hoursLogged') val = parseNumberBR(val);
+      if (f.key === 'startDate' || f.key === 'deadline') val = excelDateToISO(val);
+      obj[f.key] = val;
+    });
+    return obj;
+  });
+
+  closeModal('importMappingModal');
+  if (importContext.target === 'projects') doImportProjects(normalizedRows);
+  else doImportTasks(normalizedRows);
 }
 
 function importProjects(input) {
   const file = input.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = async (e) => {
+  reader.onload = (e) => {
     try {
       const wb = XLSX.read(e.target.result, { type: 'array' });
       const sheet = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sheet);
-      const normalized = rows.map(r => ({
-        name: r.name || r.Nome || r.Name,
-        description: r.description || r.Descricao,
-        budget: r.budget || r.Orcamento,
-        spent: r.spent || r.Gasto,
-        status: r.status || r.Status,
-        responsible: r.responsible || r.Responsavel,
-        deadline: excelDateToISO(r.deadline || r.Prazo)
-      }));
-      const res = await fetch(API + '/api/v1/projects/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: normalized }) });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error || 'Erro ao importar');
-      alert(d.created + ' projeto(s) importado(s) com sucesso.');
-      loadProjetosView();
-    } catch (err) { alert('Erro ao importar planilha: ' + err.message); }
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      if (!rows.length) { alert('Planilha vazia ou sem dados legiveis.'); input.value = ''; return; }
+      const headers = Object.keys(rows[0]);
+      openImportMapping('projects', headers, rows);
+    } catch (err) { alert('Erro ao ler planilha: ' + err.message); }
     input.value = '';
   };
   reader.readAsArrayBuffer(file);
+}
+
+async function doImportProjects(rows) {
+  try {
+    const res = await fetch(API + '/api/v1/projects/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows }) });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || 'Erro ao importar');
+    alert(d.created + ' projeto(s) importado(s) com sucesso.');
+    loadProjetosView();
+  } catch (err) { alert('Erro ao importar: ' + err.message); }
 }
 
 async function exportProjects() {
@@ -1149,29 +1261,28 @@ function importTasks(input) {
   const file = input.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = async (e) => {
+  reader.onload = (e) => {
     try {
       const wb = XLSX.read(e.target.result, { type: 'array' });
       const sheet = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sheet);
-      const normalized = rows.map(r => ({
-        title: r.title || r.Titulo || r.Title,
-        project: r.project || r.Projeto,
-        description: r.description || r.Descricao,
-        status: r.status || r.Status,
-        priority: r.priority || r.Prioridade,
-        responsible: r.responsible || r.Responsavel,
-        deadline: excelDateToISO(r.deadline || r.Prazo)
-      }));
-      const res = await fetch(API + '/api/v1/tasks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: normalized }) });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error || 'Erro ao importar');
-      alert(d.created + ' tarefa(s) importada(s). ' + (d.skipped ? d.skipped + ' ignorada(s) por falta de titulo ou projeto valido.' : ''));
-      loadKanban();
-    } catch (err) { alert('Erro ao importar planilha: ' + err.message); }
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      if (!rows.length) { alert('Planilha vazia ou sem dados legiveis.'); input.value = ''; return; }
+      const headers = Object.keys(rows[0]);
+      openImportMapping('tasks', headers, rows);
+    } catch (err) { alert('Erro ao ler planilha: ' + err.message); }
     input.value = '';
   };
   reader.readAsArrayBuffer(file);
+}
+
+async function doImportTasks(rows) {
+  try {
+    const res = await fetch(API + '/api/v1/tasks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows }) });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || 'Erro ao importar');
+    alert(d.created + ' tarefa(s) importada(s). ' + (d.skipped ? d.skipped + ' ignorada(s) por falta de titulo ou projeto valido.' : ''));
+    loadKanban();
+  } catch (err) { alert('Erro ao importar: ' + err.message); }
 }
 
 async function exportTasks() {
