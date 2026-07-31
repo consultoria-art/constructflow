@@ -7,6 +7,22 @@ const jwt = require('jsonwebtoken');
 
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'constructflow-secret';
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY || '');
+const APP_URL = process.env.APP_URL || '';
+
+const PLANS = {
+  basico: { name: 'Basico', price: 97, description: 'Ate 3 projetos ativos, ate 5 usuarios', priceId: process.env.STRIPE_PRICE_BASICO },
+  pro: { name: 'Pro', price: 197, description: 'Ate 15 projetos ativos, ate 20 usuarios', priceId: process.env.STRIPE_PRICE_PRO },
+  enterprise: { name: 'Enterprise', price: 397, description: 'Projetos e usuarios ilimitados', priceId: process.env.STRIPE_PRICE_ENTERPRISE }
+};
+
+function parseRawBody(req) {
+  return new Promise((resolve) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+  });
+}
 
 function sendJSON(res, status, data) {
   res.statusCode = status;
@@ -152,7 +168,7 @@ const server = http.createServer(async (req, res) => {
       const slug = organizationName.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 40);
       const hash = await bcrypt.hash(password, 10);
       const org = await prisma.organization.create({
-        data: { name: organizationName, slug, users: { create: { name, email, passwordHash: hash, role: 'admin' } } },
+        data: { name: organizationName, slug, active: false, subscriptionStatus: 'pending', users: { create: { name, email, passwordHash: hash, role: 'admin' } } },
         include: { users: true }
       });
       const token = jwt.sign({ userId: org.users[0].id, email, organizationId: org.id, role: 'admin' }, JWT_SECRET, { expiresIn: '7d' });
@@ -165,9 +181,46 @@ const server = http.createServer(async (req, res) => {
       const user = await prisma.user.findUnique({ where: { email }, include: { organization: true } });
       if (!user) return sendJSON(res, 401, { error: 'Email ou senha invalidos' });
       if (!await bcrypt.compare(password, user.passwordHash)) return sendJSON(res, 401, { error: 'Email ou senha invalidos' });
-      if (!user.organization.active) return sendJSON(res, 403, { error: 'Conta desativada' });
       const token = jwt.sign({ userId: user.id, email, organizationId: user.organizationId, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
       return sendJSON(res, 200, { token, user: { id: user.id, name: user.name, email: user.email, role: user.role }, organization: { id: user.organization.id, name: user.organization.name, slug: user.organization.slug } });
+    }
+
+    // ============ BILLING (STRIPE) ============
+    if (req.url === '/api/v1/billing/webhook' && req.method === 'POST') {
+      const sig = req.headers['stripe-signature'];
+      const rawBody = await parseRawBody(req);
+      let event;
+      try {
+        event = stripe.webhooks.constructEvent(rawBody, sig, process.env.STRIPE_WEBHOOK_SECRET || '');
+      } catch (err) {
+        return sendJSON(res, 400, { error: 'Assinatura do webhook invalida' });
+      }
+      try {
+        if (event.type === 'checkout.session.completed') {
+          const session = event.data.object;
+          const organizationId = session.metadata && session.metadata.organizationId;
+          if (organizationId) {
+            await prisma.organization.update({ where: { id: organizationId }, data: { active: true, subscriptionStatus: 'active', stripeSubscriptionId: session.subscription } });
+          }
+        } else if (event.type === 'invoice.payment_succeeded') {
+          const invoice = event.data.object;
+          if (invoice.subscription) {
+            const org = await prisma.organization.findFirst({ where: { stripeSubscriptionId: invoice.subscription } });
+            if (org) await prisma.organization.update({ where: { id: org.id }, data: { active: true, subscriptionStatus: 'active' } });
+          }
+        } else if (event.type === 'invoice.payment_failed') {
+          const invoice = event.data.object;
+          if (invoice.subscription) {
+            const org = await prisma.organization.findFirst({ where: { stripeSubscriptionId: invoice.subscription } });
+            if (org) await prisma.organization.update({ where: { id: org.id }, data: { active: false, subscriptionStatus: 'overdue' } });
+          }
+        } else if (event.type === 'customer.subscription.deleted') {
+          const sub = event.data.object;
+          const org = await prisma.organization.findFirst({ where: { stripeSubscriptionId: sub.id } });
+          if (org) await prisma.organization.update({ where: { id: org.id }, data: { active: false, subscriptionStatus: 'canceled' } });
+        }
+      } catch (e) { /* erro ao processar, mas confirma recebimento para nao gerar retentativas infinitas */ }
+      return sendJSON(res, 200, { received: true });
     }
 
     const user = getUser(req);
@@ -177,6 +230,47 @@ const server = http.createServer(async (req, res) => {
       const u = await prisma.user.findUnique({ where: { id: user.userId }, include: { organization: true } });
       if (!u) return sendJSON(res, 404, { error: 'Usuario nao encontrado' });
       return sendJSON(res, 200, { id: u.id, name: u.name, email: u.email, role: u.role, organization: { id: u.organization.id, name: u.organization.name, slug: u.organization.slug } });
+    }
+
+    if (req.url === '/api/v1/billing/plans' && req.method === 'GET') {
+      const clean = {};
+      Object.entries(PLANS).forEach(([k, p]) => { clean[k] = { name: p.name, price: p.price, description: p.description, available: !!p.priceId }; });
+      return sendJSON(res, 200, clean);
+    }
+
+    if (req.url === '/api/v1/billing/status' && req.method === 'GET') {
+      const org = await prisma.organization.findUnique({ where: { id: user.organizationId } });
+      return sendJSON(res, 200, { plan: org.plan, active: org.active, subscriptionStatus: org.subscriptionStatus });
+    }
+
+    if (req.url === '/api/v1/billing/subscribe' && req.method === 'POST') {
+      if (user.role !== 'admin') return sendJSON(res, 403, { error: 'Apenas o administrador pode gerenciar a assinatura' });
+      if (!process.env.STRIPE_SECRET_KEY) return sendJSON(res, 500, { error: 'Integracao de pagamento nao configurada (STRIPE_SECRET_KEY ausente)' });
+      const { planKey } = await parseBody(req);
+      if (!PLANS[planKey]) return sendJSON(res, 400, { error: 'Plano invalido' });
+      if (!PLANS[planKey].priceId) return sendJSON(res, 400, { error: 'Este plano ainda nao tem um preco configurado no Stripe (STRIPE_PRICE_' + planKey.toUpperCase() + ')' });
+      try {
+        const org = await prisma.organization.findUnique({ where: { id: user.organizationId } });
+        const u = await prisma.user.findUnique({ where: { id: user.userId } });
+        let customerId = org.stripeCustomerId;
+        if (!customerId) {
+          const customer = await stripe.customers.create({ email: u.email, name: u.name, metadata: { organizationId: org.id } });
+          customerId = customer.id;
+          await prisma.organization.update({ where: { id: org.id }, data: { stripeCustomerId: customerId } });
+        }
+        const session = await stripe.checkout.sessions.create({
+          mode: 'subscription',
+          customer: customerId,
+          line_items: [{ price: PLANS[planKey].priceId, quantity: 1 }],
+          success_url: APP_URL + '/?billing=success',
+          cancel_url: APP_URL + '/?billing=cancel',
+          metadata: { organizationId: org.id, planKey }
+        });
+        await prisma.organization.update({ where: { id: org.id }, data: { plan: planKey, subscriptionStatus: 'pending' } });
+        return sendJSON(res, 201, { checkoutUrl: session.url });
+      } catch (e) {
+        return sendJSON(res, 500, { error: e.message });
+      }
     }
 
     if (req.url === '/api/v1/dashboard' && req.method === 'GET') {
@@ -296,6 +390,7 @@ const server = http.createServer(async (req, res) => {
       if (data.startDate) data.startDate = new Date(data.startDate);
       if (data.progress !== undefined) data.progress = parseInt(data.progress) || 0;
       if (data.hoursLogged !== undefined) data.hoursLogged = parseFloat(data.hoursLogged) || 0;
+      if (data.cost !== undefined) data.cost = parseFloat(data.cost) || 0;
       return sendJSON(res, 201, await prisma.task.create({ data }));
     }
 
@@ -325,10 +420,12 @@ const server = http.createServer(async (req, res) => {
             status: r.status || 'pending',
             priority: r.priority || 'medium',
             assigneeId,
+            parentId: r.parentId || null,
             startDate: r.startDate ? new Date(r.startDate) : null,
             deadline: r.deadline ? new Date(r.deadline) : null,
             progress: parseInt(r.progress) || 0,
             hoursLogged: parseFloat(r.hoursLogged) || 0,
+            cost: parseFloat(r.cost) || 0,
             projectId
           }
         });
@@ -344,6 +441,7 @@ const server = http.createServer(async (req, res) => {
       if (data.startDate) data.startDate = new Date(data.startDate);
       if (data.progress !== undefined) data.progress = parseInt(data.progress) || 0;
       if (data.hoursLogged !== undefined) data.hoursLogged = parseFloat(data.hoursLogged) || 0;
+      if (data.cost !== undefined) data.cost = parseFloat(data.cost) || 0;
       return sendJSON(res, 200, await prisma.task.update({ where: { id }, data }));
     }
 
