@@ -189,6 +189,22 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 </div>
 </div>
 
+<div class="auth-screen hidden" id="paywallScreen" style="align-items:flex-start;padding:40px 20px;">
+<div class="auth-box" style="width:900px;max-width:95%;">
+<div class="logo"><span>CF</span> ConstructFlow</div>
+<h2 id="paywallTitle">Escolha um plano para continuar</h2>
+<p id="paywallSubtitle">Sua empresa ainda nao tem uma assinatura ativa. Escolha um plano para liberar o acesso.</p>
+<div class="error" id="paywallError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+<div class="summary-cards" id="plansContainer"></div>
+<div id="paywallFormWrap" class="hidden">
+<p style="font-size:13px;color:#6b7280;margin-bottom:12px;">Voce sera redirecionado para uma pagina segura do Stripe para concluir o pagamento (cartao, e Pix se disponivel para sua conta).</p>
+<button onclick="confirmSubscribe()">Continuar para pagamento</button>
+<div class="loader" id="paywallLoader">Preparando pagamento...</div>
+</div>
+<div class="link" id="paywallBackLink"><a onclick="logout()">Sair</a></div>
+</div>
+</div>
+
 <div class="dashboard" id="dashboard">
 <div class="sidebar">
 <div class="logo"><span>CF</span> ConstructFlow</div>
@@ -266,11 +282,13 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
       <div><h1>Tarefas</h1><p>Arraste os cards entre as colunas para mudar o status</p></div>
       <div class="header-right">
         <label class="file-input-label">📥 Importar Excel<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importTasks(this)"></label>
+        <label class="file-input-label">🏗️ Importar Lista de Servicos (Obra)<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importBoq(this)"></label>
         <button class="btn btn-secondary" onclick="exportTasks()">📤 Exportar Excel</button>
         <button class="btn btn-primary" onclick="openTaskModal()">+ Nova Tarefa</button>
       </div>
     </div>
-    <p class="import-hint">Planilha de importacao deve ter colunas: title, project (nome do projeto), description, status, priority, responsible, deadline (AAAA-MM-DD)</p>
+    <p class="import-hint">Planilha de importacao deve ter colunas: title, project (nome do projeto), description, status, priority, responsible, deadline (AAAA-MM-DD). "Lista de Servicos (Obra)" le planilhas reais de orcamento/BOQ com varias abas, cabecalho fora da linha 1 e linhas de subtotal - servicos sao agrupados em tarefas macro por setor, com os subitens dentro.</p>
+    <input type="text" id="taskSearchInput" class="input" placeholder="Buscar tarefa por titulo (inclui subitens)..." oninput="loadKanban()" style="max-width:400px;">
     <div class="kanban-board">
       <div class="kanban-col" data-status="pending" ondragover="event.preventDefault(); this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="onKanbanDrop(event, 'pending')">
         <h4>Pendente <span id="countPending">0</span></h4>
@@ -351,6 +369,12 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
         <p style="font-size:13px;color:#374151;margin-bottom:6px;"><strong>Email:</strong> <span id="cfgUserEmail"></span></p>
         <p style="font-size:13px;color:#374151;"><strong>Perfil:</strong> <span id="cfgUserRole"></span></p>
       </div>
+      <div class="card" id="cfgBillingCard">
+        <h3>Assinatura</h3>
+        <p style="font-size:13px;color:#374151;margin-bottom:6px;"><strong>Plano:</strong> <span id="cfgPlanName"></span></p>
+        <p style="font-size:13px;color:#374151;margin-bottom:12px;"><strong>Status:</strong> <span id="cfgSubStatus"></span></p>
+        <button class="btn btn-secondary" onclick="openBillingFromSettings()">Gerenciar assinatura</button>
+      </div>
     </div>
   </div>
 
@@ -430,7 +454,15 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <input id="taskProgress" type="number" min="0" max="100" class="input" value="0">
 <label class="field">Horas trabalhadas</label>
 <input id="taskHours" type="number" min="0" class="input" value="0">
+<div id="taskCostField">
+<label class="field">Custo (R$)</label>
+<input id="taskCost" type="number" min="0" class="input" value="0">
+</div>
 <label class="field" style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="taskMilestone" style="width:auto;margin:0;"> Marcar como Marco (milestone)</label>
+<div id="taskChildrenWrap" class="hidden" style="margin-top:16px;border-top:1px solid #e5e7eb;padding-top:12px;">
+<h3 style="font-size:13px;margin-bottom:8px;">Subitens desta tarefa</h3>
+<div id="taskChildrenList" style="max-height:200px;overflow-y:auto;"></div>
+</div>
 <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
 <button class="btn btn-secondary" onclick="closeModal('taskModal')">Cancelar</button>
 <button class="btn btn-primary" onclick="saveTask()">Salvar</button>
@@ -588,6 +620,22 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 </div>
 </div>
 
+<!-- MODAL BOQ -->
+<div class="modal-overlay" id="boqModal">
+<div class="modal-box" style="width:560px;">
+<h2 style="margin-bottom:8px;">Importar Lista de Servicos</h2>
+<p style="font-size:12px;color:#6b7280;margin-bottom:16px;">Selecione o projeto que vai receber os servicos desta planilha.</p>
+<div class="error" id="boqError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+<label class="field">Projeto</label>
+<select id="boqProjectSelect" class="input"></select>
+<div id="boqSummary"></div>
+<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;">
+<button class="btn btn-secondary" onclick="closeModal('boqModal')">Cancelar</button>
+<button class="btn btn-primary" id="boqConfirmBtn" style="display:none;" onclick="confirmBoqImport()">Importar Tarefas</button>
+</div>
+</div>
+</div>
+
 <script>
 const API = '';
 let currentUser = null;
@@ -680,11 +728,36 @@ function applyRolePermissions() {
   document.getElementById('ownerSummarySection') && document.getElementById('ownerSummarySection').classList.toggle('hidden', !isOwnerUI());
 }
 
-function enterDashboard(data) {
+let selectedPlanKey = null;
+let lastBillingStatus = null;
+
+async function enterDashboard(data) {
   currentUser = data.user;
   currentUser.organization = data.organization;
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('signupScreen').classList.add('hidden');
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const billingReturn = urlParams.get('billing');
+  let status = null;
+  try {
+    const res = await fetch(API + '/api/v1/billing/status', { headers: apiHeaders() });
+    status = await res.json();
+  } catch (e) { /* se falhar a checagem, segue para o painel normalmente */ }
+
+  if (status && !status.active && billingReturn === 'success') {
+    for (let i = 0; i < 5 && status && !status.active; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      try {
+        const res2 = await fetch(API + '/api/v1/billing/status', { headers: apiHeaders() });
+        status = await res2.json();
+      } catch (e) { break; }
+    }
+  }
+
+  if (status && !status.active) { showPaywall(status); return; }
+
+  document.getElementById('paywallScreen').classList.add('hidden');
   document.getElementById('dashboard').style.display = 'block';
   document.getElementById('userAvatar').textContent = (data.user.name || 'U')[0].toUpperCase();
   document.getElementById('userName').textContent = data.user.name;
@@ -694,6 +767,70 @@ function enterDashboard(data) {
   document.getElementById('headerDate').textContent = now.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
   applyRolePermissions();
   showView('visaogeral');
+}
+
+async function showPaywall(status) {
+  lastBillingStatus = status;
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('signupScreen').classList.add('hidden');
+  document.getElementById('paywallScreen').classList.remove('hidden');
+
+  const backLink = document.getElementById('paywallBackLink');
+  backLink.innerHTML = status.active ? '<a onclick="backToDashboard()">Voltar ao painel</a> &middot; <a onclick="logout()">Sair</a>' : '<a onclick="logout()">Sair</a>';
+
+  const isAdmin = currentUser.role === 'admin';
+  document.getElementById('paywallFormWrap').classList.add('hidden');
+  if (!isAdmin) {
+    document.getElementById('paywallTitle').textContent = 'Assinatura pendente';
+    document.getElementById('paywallSubtitle').textContent = 'A assinatura desta empresa esta ' + (status.subscriptionStatus === 'overdue' ? 'com pagamento em atraso' : 'pendente de pagamento') + '. Fale com o administrador da sua organizacao para regularizar.';
+    document.getElementById('plansContainer').innerHTML = '';
+    return;
+  }
+  document.getElementById('paywallTitle').textContent = status.subscriptionStatus === 'overdue' ? 'Pagamento em atraso' : 'Escolha um plano para continuar';
+  document.getElementById('paywallSubtitle').textContent = status.subscriptionStatus === 'overdue' ? 'A ultima cobranca nao foi paga. Regularize para reativar o acesso.' : 'Sua empresa ainda nao tem uma assinatura ativa. Escolha um plano para liberar o acesso.';
+
+  try {
+    const res = await fetch(API + '/api/v1/billing/plans', { headers: apiHeaders() });
+    const plans = await res.json();
+    const container = document.getElementById('plansContainer');
+    container.innerHTML = Object.entries(plans).map(([key, p]) => (
+      '<div class="kpi-card" style="cursor:pointer;border:2px solid ' + (selectedPlanKey === key ? '#4f46e5' : 'transparent') + ';" onclick="selectPlan(\'' + key + '\')">'
+      + '<div class="kpi-label">' + p.name.toUpperCase() + '</div>'
+      + '<div class="kpi-value">R$ ' + p.price.toFixed(2).replace('.', ',') + '<span style="font-size:12px;color:#6b7280;">/mes</span></div>'
+      + '<p style="font-size:12px;color:#6b7280;margin-top:8px;">' + p.description + '</p>'
+      + '</div>'
+    )).join('');
+  } catch (e) { document.getElementById('paywallError').textContent = 'Erro ao carregar planos'; document.getElementById('paywallError').style.display = 'block'; }
+}
+
+function backToDashboard() {
+  document.getElementById('paywallScreen').classList.add('hidden');
+  document.getElementById('dashboard').style.display = 'block';
+  showView('configuracoes');
+}
+
+function selectPlan(key) {
+  selectedPlanKey = key;
+  document.querySelectorAll('#plansContainer .kpi-card').forEach(el => el.style.border = '2px solid transparent');
+  document.getElementById('paywallFormWrap').classList.remove('hidden');
+  showPaywall(lastBillingStatus || { subscriptionStatus: 'pending' });
+}
+
+async function confirmSubscribe() {
+  const error = document.getElementById('paywallError');
+  const loader = document.getElementById('paywallLoader');
+  error.style.display = 'none';
+  if (!selectedPlanKey) { error.textContent = 'Selecione um plano'; error.style.display = 'block'; return; }
+  loader.style.display = 'block';
+  try {
+    const res = await fetch(API + '/api/v1/billing/subscribe', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ planKey: selectedPlanKey }) });
+    const d = await res.json();
+    loader.style.display = 'none';
+    if (!res.ok) throw new Error(d.error || 'Erro ao iniciar pagamento');
+    if (d.checkoutUrl) { window.location.href = d.checkoutUrl; }
+    else { error.textContent = 'Nao foi possivel obter o link de pagamento.'; error.style.display = 'block'; }
+  } catch (e) { loader.style.display = 'none'; error.textContent = e.message; error.style.display = 'block'; }
 }
 
 function showView(view) {
@@ -1280,12 +1417,25 @@ async function loadKanban() {
       fetch(API + '/api/v1/tasks', { headers: apiHeaders() }),
       fetch(API + '/api/v1/projects', { headers: apiHeaders() })
     ]);
-    const tasks = await taskRes.json();
+    const allTasks = await taskRes.json();
     cachedProjects = await projRes.json();
-    window._cachedTasks = tasks;
-    renderKanbanColumn('pending', 'kanbanPending', 'countPending', tasks);
-    renderKanbanColumn('in_progress', 'kanbanInProgress', 'countInProgress', tasks);
-    renderKanbanColumn('done', 'kanbanDone', 'countDone', tasks);
+    window._cachedTasks = allTasks;
+
+    const searchRaw = (document.getElementById('taskSearchInput') || {}).value || '';
+    const search = normKey(searchRaw);
+
+    let tasksToShow;
+    if (search) {
+      tasksToShow = allTasks.filter(t => normKey(t.title).indexOf(search) > -1);
+    } else {
+      const childCount = {};
+      allTasks.forEach(t => { if (t.parentId) childCount[t.parentId] = (childCount[t.parentId] || 0) + 1; });
+      tasksToShow = allTasks.filter(t => !t.parentId).map(t => ({ ...t, _childCount: childCount[t.id] || 0 }));
+    }
+
+    renderKanbanColumn('pending', 'kanbanPending', 'countPending', tasksToShow);
+    renderKanbanColumn('in_progress', 'kanbanInProgress', 'countInProgress', tasksToShow);
+    renderKanbanColumn('done', 'kanbanDone', 'countDone', tasksToShow);
   } catch (e) { console.error(e); }
 }
 
@@ -1296,9 +1446,10 @@ function renderKanbanColumn(status, containerId, countId, tasks) {
   if (!filtered.length) { c.innerHTML = ''; return; }
   c.innerHTML = filtered.map(t => {
     const prioLabel = { low: 'Baixa', medium: 'Media', high: 'Alta' }[t.priority] || t.priority;
+    const childBadge = t._childCount ? '<span class="deviation-badge" style="background:#dbeafe;color:#1e40af;">' + t._childCount + ' subitens</span>' : '';
     return '<div class="kanban-card" draggable="true" ondragstart="onKanbanDragStart(event, \'' + t.id + '\')" onclick="editTask(\'' + t.id + '\')">'
-      + '<div class="kc-title">' + (t.isMilestone ? '⭐ ' : '') + t.title + '</div>'
-      + '<div class="kc-meta">' + (t.project ? t.project.name : '') + ' &middot; ' + prioLabel + (t.assignee ? ' &middot; ' + t.assignee.name : '') + (t.deadline ? ' &middot; ' + fmtDate(t.deadline) : '') + '</div>'
+      + '<div class="kc-title">' + (t.isMilestone ? '⭐ ' : '') + t.title + childBadge + '</div>'
+      + '<div class="kc-meta">' + (t.project ? t.project.name : '') + ' &middot; ' + prioLabel + (t.assignee ? ' &middot; ' + t.assignee.name : '') + (t.deadline ? ' &middot; ' + fmtDate(t.deadline) : '') + (canSeeFinanceUI() && t.cost ? ' &middot; ' + fmtMoney(t.cost) : '') + '</div>'
       + '<div class="cost-track" style="margin-top:6px;height:6px;"><div class="cost-fill cost-fill-blue" style="width:' + (t.progress || 0) + '%"></div></div>'
       + '</div>';
   }).join('');
@@ -1340,7 +1491,10 @@ async function openTaskModal() {
   document.getElementById('taskDeadline').value = '';
   document.getElementById('taskProgress').value = 0;
   document.getElementById('taskHours').value = 0;
+  document.getElementById('taskCost').value = 0;
+  document.getElementById('taskCostField').classList.toggle('hidden', !canSeeFinanceUI());
   document.getElementById('taskMilestone').checked = false;
+  document.getElementById('taskChildrenWrap').classList.add('hidden');
   document.getElementById('taskModal').style.display = 'flex';
 }
 
@@ -1367,7 +1521,24 @@ async function editTask(id) {
   document.getElementById('taskDeadline').value = t.deadline ? t.deadline.substring(0, 10) : '';
   document.getElementById('taskProgress').value = t.progress || 0;
   document.getElementById('taskHours').value = t.hoursLogged || 0;
+  document.getElementById('taskCost').value = t.cost || 0;
+  document.getElementById('taskCostField').classList.toggle('hidden', !canSeeFinanceUI());
   document.getElementById('taskMilestone').checked = !!t.isMilestone;
+
+  const children = (window._cachedTasks || []).filter(x => x.parentId === t.id);
+  const childrenWrap = document.getElementById('taskChildrenWrap');
+  if (children.length) {
+    childrenWrap.classList.remove('hidden');
+    document.getElementById('taskChildrenList').innerHTML = children.map(ch => {
+      const statusLabel = { pending: 'Pendente', in_progress: 'Em andamento', done: 'Concluida' }[ch.status] || ch.status;
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">'
+        + '<span>' + ch.title + ' <span style="color:#6b7280;">(' + statusLabel + ')</span></span>'
+        + '<a style="color:#4f46e5;cursor:pointer;" onclick="editTask(\'' + ch.id + '\')">Abrir</a>'
+        + '</div>';
+    }).join('');
+  } else {
+    childrenWrap.classList.add('hidden');
+  }
   document.getElementById('taskModal').style.display = 'flex';
 }
 
@@ -1383,12 +1554,13 @@ async function saveTask() {
   const deadline = document.getElementById('taskDeadline').value;
   const progress = document.getElementById('taskProgress').value;
   const hoursLogged = document.getElementById('taskHours').value;
+  const cost = canSeeFinanceUI() ? document.getElementById('taskCost').value : undefined;
   const isMilestone = document.getElementById('taskMilestone').checked;
   const error = document.getElementById('taskError');
   if (!title) { error.textContent = 'Titulo e obrigatorio'; error.style.display = 'block'; return; }
   if (!projectId) { error.textContent = 'Selecione um projeto'; error.style.display = 'block'; return; }
   error.style.display = 'none';
-  const body = { title, description, status, priority, assigneeId: assigneeId || null, parentId: parentId || null, startDate: startDate || undefined, deadline: deadline || undefined, progress, hoursLogged, isMilestone };
+  const body = { title, description, status, priority, assigneeId: assigneeId || null, parentId: parentId || null, startDate: startDate || undefined, deadline: deadline || undefined, progress, hoursLogged, cost, isMilestone };
   if (!editingTaskId) body.projectId = projectId;
   try {
     const url = editingTaskId ? API + '/api/v1/tasks/' + editingTaskId : API + '/api/v1/tasks';
@@ -1494,6 +1666,153 @@ function generateRiscosInsights(risks) {
     }
   });
   return { critical, improvement, positive };
+}
+
+const BOQ_HEADER_KEYWORDS = {
+  item: ['item'],
+  descricao: ['descricao', 'servico', 'discriminacao'],
+  quantidade: ['qtde', 'qtd', 'quantidade', 'quant'],
+  unidade: ['und', 'unid', 'unidade'],
+  valorunit: ['valorunit', 'valorunitario', 'precounit', 'precounitario'],
+  valortotal: ['valortotal', 'total', 'valor']
+};
+
+function boqFindHeaderRow(aoa) {
+  let bestRow = -1, bestScore = 0, bestCols = null;
+  const limit = Math.min(aoa.length, 15);
+  for (let i = 0; i < limit; i++) {
+    const row = aoa[i];
+    if (!row) continue;
+    const cols = {};
+    let score = 0;
+    row.forEach((cell, colIdx) => {
+      const n = normKey(cell);
+      if (!n) return;
+      Object.entries(BOQ_HEADER_KEYWORDS).forEach(([field, keywords]) => {
+        if (cols[field] !== undefined) return;
+        if (keywords.some(k => n === k || n.indexOf(k) > -1)) { cols[field] = colIdx; score++; }
+      });
+    });
+    if (score > bestScore) { bestScore = score; bestRow = i; bestCols = cols; }
+  }
+  if (bestScore < 2) return null;
+  return { rowIndex: bestRow, cols: bestCols };
+}
+
+function boqParseSheetGrouped(sheetName, aoa) {
+  const header = boqFindHeaderRow(aoa);
+  if (!header) return { groups: [], recognized: false };
+  const { rowIndex, cols } = header;
+  if (cols.descricao === undefined) return { groups: [], recognized: true };
+
+  const groups = [];
+  let currentGroup = { title: 'Servicos - ' + sheetName, items: [] };
+  groups.push(currentGroup);
+
+  for (let i = rowIndex + 1; i < aoa.length; i++) {
+    const row = aoa[i];
+    if (!row) continue;
+    const descRaw = row[cols.descricao];
+    const desc = (descRaw === undefined || descRaw === null) ? '' : String(descRaw).trim();
+    if (!desc) continue;
+    const upper = desc.toUpperCase();
+    if (upper.indexOf('SUB-TOTAL') > -1 || upper.indexOf('SUBTOTAL') > -1 || upper.indexOf('TOTAL GERAL') > -1) continue;
+
+    const qty = cols.quantidade !== undefined ? parseNumberBR(row[cols.quantidade]) : 0;
+    const unitValue = cols.valorunit !== undefined ? parseNumberBR(row[cols.valorunit]) : 0;
+    let totalValue = cols.valortotal !== undefined ? parseNumberBR(row[cols.valortotal]) : 0;
+    if (!totalValue && unitValue && qty) totalValue = unitValue * qty;
+    const hasRealData = qty > 0 || unitValue > 0 || totalValue > 0;
+
+    const itemCode = (cols.item !== undefined && row[cols.item] !== undefined && row[cols.item] !== null) ? String(row[cols.item]).trim() : '';
+
+    if (!hasRealData) {
+      if (/^\d+$/.test(itemCode)) {
+        currentGroup = { title: desc.substring(0, 150), items: [] };
+        groups.push(currentGroup);
+      }
+      continue;
+    }
+
+    currentGroup.items.push({
+      title: desc.substring(0, 150),
+      description: '[' + sheetName + ']' + (qty ? ' Qtde: ' + qty + (cols.unidade !== undefined && row[cols.unidade] ? ' ' + String(row[cols.unidade]).trim() : '') : ''),
+      cost: Math.round(totalValue * 100) / 100
+    });
+  }
+
+  return { groups: groups.filter(g => g.items.length), recognized: true };
+}
+
+let boqParsedGroups = [];
+
+function importBoq(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      let allGroups = [];
+      let sheetsRecognized = 0, sheetsSkipped = [];
+      wb.SheetNames.forEach(name => {
+        const sheet = wb.Sheets[name];
+        const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+        const result = boqParseSheetGrouped(name, aoa);
+        if (result.recognized && result.groups.length) { sheetsRecognized++; allGroups = allGroups.concat(result.groups); }
+        else if (!result.recognized) sheetsSkipped.push(name);
+      });
+      boqParsedGroups = allGroups;
+      const totalItems = allGroups.reduce((s, g) => s + g.items.length, 0);
+      const totalCost = allGroups.reduce((s, g) => s + g.items.reduce((s2, i) => s2 + i.cost, 0), 0);
+      document.getElementById('boqProjectSelect').innerHTML = cachedProjects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+      const summary = document.getElementById('boqSummary');
+      summary.innerHTML = '<div class="card" style="margin-top:12px;background:#f9fafb;">'
+        + '<p style="font-size:13px;margin-bottom:4px;"><strong>' + allGroups.length + '</strong> tarefa(s) macro (setores) serao criadas, contendo <strong>' + totalItems + '</strong> subitem(ns) de servico ao todo.</p>'
+        + '<p style="font-size:13px;margin-bottom:4px;">Vindas de <strong>' + sheetsRecognized + '</strong> de ' + wb.SheetNames.length + ' aba(s).</p>'
+        + '<p style="font-size:13px;margin-bottom:4px;">Custo total somado: <strong>' + fmtMoney(totalCost) + '</strong></p>'
+        + (sheetsSkipped.length ? '<p style="font-size:12px;color:#9a3412;">Abas nao reconhecidas (ignoradas): ' + sheetsSkipped.join(', ') + '</p>' : '')
+        + '</div>';
+      document.getElementById('boqConfirmBtn').style.display = totalItems ? 'inline-block' : 'none';
+      document.getElementById('boqError').style.display = 'none';
+      document.getElementById('boqModal').style.display = 'flex';
+    } catch (err) { alert('Erro ao ler planilha: ' + err.message); }
+    input.value = '';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+async function confirmBoqImport() {
+  const projectId = document.getElementById('boqProjectSelect').value;
+  const error = document.getElementById('boqError');
+  const confirmBtn = document.getElementById('boqConfirmBtn');
+  if (!projectId) { error.textContent = 'Selecione um projeto'; error.style.display = 'block'; return; }
+  if (!boqParsedGroups.length) { error.textContent = 'Nenhum servico para importar'; error.style.display = 'block'; return; }
+  error.style.display = 'none';
+  confirmBtn.textContent = 'Importando, aguarde...';
+  confirmBtn.disabled = true;
+  try {
+    let groupsCreated = 0, itemsCreated = 0;
+    const childRows = [];
+    for (const group of boqParsedGroups) {
+      const groupCost = group.items.reduce((s, i) => s + i.cost, 0);
+      const res = await fetch(API + '/api/v1/tasks', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ title: group.title, description: 'Grupo importado da planilha de servicos (' + group.items.length + ' subitens)', status: 'pending', priority: 'medium', cost: groupCost, projectId }) });
+      const createdGroup = await res.json();
+      if (!res.ok) continue;
+      groupsCreated++;
+      group.items.forEach(item => childRows.push({ ...item, projectId, parentId: createdGroup.id }));
+    }
+    if (childRows.length) {
+      const res2 = await fetch(API + '/api/v1/tasks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: childRows }) });
+      const d2 = await res2.json();
+      itemsCreated = d2.created || 0;
+    }
+    closeModal('boqModal');
+    alert(groupsCreated + ' tarefa(s) macro criada(s), com ' + itemsCreated + ' subitem(ns) de servico dentro delas.');
+    loadKanban();
+  } catch (e) { error.textContent = e.message; error.style.display = 'block'; }
+  confirmBtn.textContent = 'Importar Tarefas';
+  confirmBtn.disabled = false;
 }
 
 // ============ SUPRIMENTOS ============
@@ -1798,6 +2117,21 @@ function loadConfiguracoesView() {
   document.getElementById('cfgUserName').textContent = currentUser.name;
   document.getElementById('cfgUserEmail').textContent = currentUser.email;
   document.getElementById('cfgUserRole').textContent = currentUser.role === 'admin' ? 'Administrador' : currentUser.role === 'coordenador' ? 'Coordenador' : 'Engenheiro';
+  document.getElementById('cfgBillingCard').classList.toggle('hidden', currentUser.role !== 'admin');
+  if (currentUser.role === 'admin') {
+    fetch(API + '/api/v1/billing/status', { headers: apiHeaders() }).then(r => r.json()).then(s => {
+      document.getElementById('cfgPlanName').textContent = PLAN_LABELS[s.plan] || s.plan;
+      document.getElementById('cfgSubStatus').textContent = s.subscriptionStatus === 'active' ? 'Ativa' : s.subscriptionStatus === 'overdue' ? 'Pagamento em atraso' : s.subscriptionStatus === 'canceled' ? 'Cancelada' : 'Pendente';
+    });
+  }
+}
+
+const PLAN_LABELS = { basico: 'Basico', pro: 'Pro', enterprise: 'Enterprise', free: 'Nenhum (gratuito)' };
+
+async function openBillingFromSettings() {
+  const res = await fetch(API + '/api/v1/billing/status', { headers: apiHeaders() });
+  const status = await res.json();
+  showPaywall(status);
 }
 
 async function saveOrganization() {
