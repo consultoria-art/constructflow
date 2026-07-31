@@ -1,0 +1,2162 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ConstructFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
+.auth-screen { display: flex; min-height: 100vh; align-items: center; justify-content: center; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); }
+.auth-box { background: #fff; border-radius: 16px; padding: 40px; width: 420px; max-width: 90%; }
+.auth-box .logo { font-size: 24px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.auth-box h2 { font-size: 20px; margin-bottom: 4px; }
+.auth-box p { color: #6b7280; font-size: 14px; margin-bottom: 24px; }
+.auth-box label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 4px; color: #374151; }
+.auth-box input { width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; margin-bottom: 16px; }
+.auth-box button { width: 100%; padding: 12px; background: #4f46e5; color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; }
+.auth-box button:hover { background: #4338ca; }
+.auth-box .link { text-align: center; margin-top: 16px; font-size: 13px; color: #6b7280; }
+.auth-box .link a { color: #4f46e5; cursor: pointer; text-decoration: none; }
+.auth-box .link a:hover { text-decoration: underline; }
+.auth-box .error { color: #dc2626; font-size: 13px; margin-bottom: 12px; display: none; }
+.auth-box .loader { display: none; text-align: center; padding: 8px; color: #6b7280; font-size: 13px; }
+.dashboard { display: none; min-height: 100vh; }
+.sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: 240px; background: #1e2030; color: #fff; display: flex; flex-direction: column; padding: 20px; z-index: 10; overflow-y: auto; }
+.sidebar .logo { font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 10px; margin-bottom: 32px; }
+.sidebar .logo span { background: #4f46e5; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+.sidebar nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.sidebar nav a { color: #9ca3af; text-decoration: none; padding: 10px 12px; border-radius: 8px; font-size: 14px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.sidebar nav a:hover, .sidebar nav a.active { background: rgba(255,255,255,.08); color: #fff; }
+.sidebar .user-info { border-top: 1px solid rgba(255,255,255,.08); padding-top: 16px; display: flex; align-items: center; gap: 10px; }
+.sidebar .user-avatar { width: 36px; height: 36px; border-radius: 50%; background: #4f46e5; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; }
+.sidebar .user-name { font-size: 13px; font-weight: 500; }
+.sidebar .user-org { font-size: 11px; color: #9ca3af; }
+.sidebar .logout { margin-top: 10px; font-size: 12px; color: #9ca3af; cursor: pointer; text-decoration: underline; }
+.main { margin-left: 240px; padding: 24px 32px; }
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+.header h1 { font-size: 24px; font-weight: 700; }
+.header p { color: #6b7280; font-size: 14px; }
+.header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.btn { padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; }
+.btn-primary { background: #4f46e5; color: #fff; }
+.btn-primary:hover { background: #4338ca; }
+.btn-secondary { background: #e5e7eb; color: #374151; }
+.btn-danger { background: #fee2e2; color: #991b1b; }
+.btn-sm { padding: 6px 12px; font-size: 12px; }
+.kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 24px; }
+.kpi-card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.kpi-card .kpi-value { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+.kpi-card .kpi-label { font-size: 12px; color: #6b7280; margin-bottom: 8px; }
+.kpi-card .kpi-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 500; }
+.badge-green { background: #d1fae5; color: #065f46; }
+.badge-red { background: #fee2e2; color: #991b1b; }
+.badge-blue { background: #dbeafe; color: #1e40af; }
+.badge-orange { background: #ffedd5; color: #9a3412; }
+.content-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px; margin-bottom: 24px; }
+.card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.card h3 { font-size: 15px; font-weight: 600; margin-bottom: 16px; }
+.gantt-real { position: relative; padding: 20px 0 8px; }
+.gantt-scale-labels { display: flex; justify-content: space-between; font-size: 11px; color: #6b7280; margin-bottom: 8px; }
+.gantt-today-line { position: absolute; top: 24px; bottom: 0; width: 2px; background: #4f46e5; z-index: 5; }
+.gantt-today-label { position: absolute; top: 0; font-size: 10px; color: #4f46e5; font-weight: 600; transform: translateX(-50%); }
+.gantt-row { position: relative; margin-bottom: 16px; }
+.gantt-row-label { font-size: 12px; color: #374151; margin-bottom: 3px; font-weight: 500; }
+.gantt-track-real { position: relative; height: 20px; }
+.gantt-planned { position: absolute; top: 0; height: 20px; background: #e5e7eb; border-radius: 4px; border: 1px solid #d1d5db; }
+.gantt-realized { position: absolute; top: 0; height: 20px; border-radius: 4px; opacity: 0.9; }
+.gantt-legend { display: flex; gap: 16px; margin-bottom: 12px; font-size: 12px; color: #374151; }
+.cost-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.cost-bar .cost-label { width: 80px; font-size: 12px; color: #374151; }
+.cost-bar .cost-track { flex: 1; height: 12px; background: #f3f4f6; border-radius: 6px; overflow: hidden; }
+.cost-bar .cost-fill { height: 100%; border-radius: 6px; }
+.cost-fill-blue { background: #3b82f6; }
+.cost-fill-orange { background: #f97316; }
+.cost-fill-red { background: #ef4444; }
+.alert-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid #f3f4f6; font-size: 13px; }
+.alert-item:last-child { border: none; }
+.alert-icon { width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
+.alert-urgent { background: #fee2e2; color: #991b1b; }
+.alert-alert { background: #ffedd5; color: #9a3412; }
+.alert-info { background: #dbeafe; color: #1e40af; }
+.alert-warning { background: #fef9c3; color: #854d0e; }
+.table-projects { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table-projects th { text-align: left; padding: 10px 12px; border-bottom: 2px solid #e5e7eb; color: #6b7280; font-weight: 500; font-size: 12px; }
+.table-projects td { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; }
+.status-active { background: #d1fae5; color: #065f46; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+.status-delayed { background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+.status-completed { background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+.status-reprojetado { background: #ede9fe; color: #6b21a8; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+.pie-wrap { display: flex; align-items: center; gap: 24px; }
+.pie-chart { width: 140px; height: 140px; border-radius: 50%; flex-shrink: 0; }
+.pie-legend { font-size: 12px; color: #374151; }
+.pie-legend-item { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.pie-legend-dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.curva-s-wrap svg { width: 100%; height: auto; }
+.insight-title-critical { color: #991b1b; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.insight-title-improvement { color: #9a3412; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.insight-title-positive { color: #065f46; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.insight-section { margin-bottom: 12px; }
+.insight-item { font-size: 13px; color: #374151; margin-bottom: 4px; }
+.priority-low { background: #f3f4f6; color: #374151; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+.priority-medium { background: #ffedd5; color: #9a3412; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+.priority-high { background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+.deviation-badge { background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 600; margin-left: 6px; }
+.loading { text-align: center; padding: 40px; color: #6b7280; }
+.hidden { display: none !important; }
+.view-section { display: none; }
+.view-section.active { display: block; }
+.field { display:block; font-size:13px; font-weight:500; margin-bottom:4px; color:#374151; }
+.input { width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:14px; margin-bottom:12px; }
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:100; align-items:center; justify-content:center; }
+.modal-box { background:#fff; border-radius:16px; padding:32px; width:480px; max-width:90%; max-height:90vh; overflow-y:auto; }
+.summary-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.file-input-label { display: inline-block; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; background: #e5e7eb; color: #374151; }
+.file-input-label:hover { background: #d1d5db; }
+.import-hint { font-size: 12px; color: #6b7280; margin-top: -6px; margin-bottom: 16px; }
+.kanban-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.kanban-col { background: #fff; border-radius: 12px; padding: 16px; min-height: 300px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.kanban-col h4 { font-size: 13px; font-weight: 600; margin-bottom: 12px; color: #374151; display: flex; justify-content: space-between; }
+.kanban-col.dragover { background: #eef2ff; }
+.kanban-card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; cursor: grab; font-size: 13px; }
+.kanban-card:active { cursor: grabbing; }
+.kanban-card .kc-title { font-weight: 600; margin-bottom: 4px; }
+.kanban-card .kc-meta { font-size: 11px; color: #6b7280; }
+.chat-box { max-height: 350px; overflow-y: auto; margin-bottom: 12px; }
+.chat-msg { padding: 8px 10px; border-radius: 8px; background: #f3f4f6; margin-bottom: 8px; font-size: 13px; }
+.chat-msg .cm-author { font-weight: 600; font-size: 12px; color: #4f46e5; }
+.chat-msg .cm-time { font-size: 10px; color: #9ca3af; margin-left: 6px; }
+.tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+.tab-btn { padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; background: #e5e7eb; color: #374151; }
+.tab-btn.active { background: #4f46e5; color: #fff; }
+.cal-legend { display: flex; gap: 16px; margin-bottom: 14px; font-size: 12px; color: #374151; }
+.cal-legend-dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 4px; vertical-align: middle; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.cal-weekday { font-size: 11px; color: #6b7280; text-align: center; font-weight: 600; padding-bottom: 4px; }
+.cal-day { border-radius: 8px; padding: 8px 6px; min-height: 64px; background: #f9fafb; font-size: 12px; cursor: pointer; border: 1px solid #e5e7eb; }
+.cal-day:hover { border-color: #4f46e5; }
+.cal-day.today { border: 2px solid #4f46e5; }
+.cal-day.other-month { opacity: 0.35; }
+.cal-day.has-red { background: #fee2e2; }
+.cal-day.has-orange { background: #fef3c7; }
+.cal-day.has-green { background: #dcfce7; }
+.cal-daynum { font-weight: 600; margin-bottom: 4px; }
+.cal-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 2px; }
+.cal-dot-red { background: #ef4444; }
+.cal-dot-orange { background: #f59e0b; }
+.cal-dot-green { background: #22c55e; }
+@media (max-width: 1024px) { .kpis { grid-template-columns: repeat(3, 1fr); } .content-grid { grid-template-columns: 1fr; } .summary-cards { grid-template-columns: repeat(2, 1fr); } .kanban-board { grid-template-columns: 1fr; } }
+@media (max-width: 768px) { .sidebar { width: 60px; } .sidebar .logo span { margin: 0; } .sidebar nav a span, .sidebar .user-info div, .sidebar .logout { display: none; } .main { margin-left: 60px; padding: 16px; } .kpis { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+
+<div class="auth-screen" id="loginScreen">
+<div class="auth-box">
+<div class="logo"><span>CF</span> ConstructFlow</div>
+<h2>Fazer login</h2>
+<p>Entre com suas credenciais</p>
+<div class="error" id="loginError"></div>
+<label>Email</label>
+<input type="email" id="loginEmail" placeholder="seu@email.com">
+<label>Senha</label>
+<input type="password" id="loginPassword" placeholder="Sua senha">
+<button onclick="login()">Entrar</button>
+<div class="loader" id="loginLoader">Entrando...</div>
+<div class="link">Nao tem conta? <a onclick="showScreen('signup')">Criar conta</a></div>
+</div>
+</div>
+
+<div class="auth-screen hidden" id="signupScreen">
+<div class="auth-box">
+<div class="logo"><span>CF</span> ConstructFlow</div>
+<h2>Criar nova conta</h2>
+<p>Preencha os dados para se cadastrar</p>
+<div class="error" id="signupError"></div>
+<label>Nome</label>
+<input type="text" id="signupName" placeholder="Seu nome completo">
+<label>Email</label>
+<input type="email" id="signupEmail" placeholder="seu@email.com">
+<label>Nome da Empresa</label>
+<input type="text" id="signupOrg" placeholder="Nome da sua empresa">
+<label>Senha</label>
+<input type="password" id="signupPassword" placeholder="Minimo 6 caracteres">
+<button onclick="signup()">Criar conta</button>
+<div class="loader" id="signupLoader">Criando conta...</div>
+<div class="link">Ja tem conta? <a onclick="showScreen('login')">Fazer login</a></div>
+</div>
+</div>
+
+<div class="auth-screen hidden" id="paywallScreen" style="align-items:flex-start;padding:40px 20px;">
+<div class="auth-box" style="width:900px;max-width:95%;">
+<div class="logo"><span>CF</span> ConstructFlow</div>
+<h2 id="paywallTitle">Escolha um plano para continuar</h2>
+<p id="paywallSubtitle">Sua empresa ainda nao tem uma assinatura ativa. Escolha um plano para liberar o acesso.</p>
+<div class="error" id="paywallError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+<div class="summary-cards" id="plansContainer"></div>
+<div id="paywallFormWrap" class="hidden">
+<p style="font-size:13px;color:#6b7280;margin-bottom:12px;">Voce sera redirecionado para uma pagina segura do Stripe para concluir o pagamento (cartao, e Pix se disponivel para sua conta).</p>
+<button onclick="confirmSubscribe()">Continuar para pagamento</button>
+<div class="loader" id="paywallLoader">Preparando pagamento...</div>
+</div>
+<div class="link" id="paywallBackLink"><a onclick="logout()">Sair</a></div>
+</div>
+</div>
+
+<div class="dashboard" id="dashboard">
+<div class="sidebar">
+<div class="logo"><span>CF</span> ConstructFlow</div>
+<nav>
+<a class="active" data-view="visaogeral" onclick="showView('visaogeral')"><span>📊</span> Visao Geral</a>
+<a data-view="projetos" onclick="showView('projetos')"><span>📁</span> Projetos</a>
+<a data-view="tarefas" onclick="showView('tarefas')"><span>🗂️</span> Tarefas</a>
+<a data-view="suprimentos" onclick="showView('suprimentos')"><span>📦</span> Suprimentos</a>
+<a data-view="despesas" onclick="showView('despesas')"><span>💵</span> Despesas</a>
+<a data-view="riscos" onclick="showView('riscos')"><span>⚠️</span> Riscos e Pendencias</a>
+<a data-view="equipe" onclick="showView('equipe')"><span>👥</span> Equipe</a>
+<a data-view="configuracoes" onclick="showView('configuracoes')"><span>⚙️</span> Configuracoes</a>
+</nav>
+<div class="user-info">
+<div class="user-avatar" id="userAvatar">A</div>
+<div><div class="user-name" id="userName">Carregando...</div><div class="user-org" id="userOrg">Carregando...</div></div>
+</div>
+<div class="logout" onclick="logout()">Sair</div>
+</div>
+
+<div class="main">
+
+  <!-- VISAO GERAL -->
+  <div class="view-section active" id="view-visaogeral">
+    <div class="header">
+      <div><h1>Painel de Controle</h1><p id="headerOrg">ConstructFlow</p></div>
+      <div class="header-right">
+        <p id="headerDate" style="font-size:13px;color:#6b7280;"></p>
+        <button class="btn btn-primary" onclick="openProjectModal()">+ Novo Projeto</button>
+      </div>
+    </div>
+    <div class="kpis">
+      <div class="kpi-card"><div class="kpi-value" id="kpiProjetos">0</div><div class="kpi-label">PROJETOS ATIVOS</div><span class="kpi-badge badge-green">Em andamento</span></div>
+      <div class="kpi-card"><div class="kpi-value" id="kpiAtrasados">0</div><div class="kpi-label">ATRASADOS</div><span class="kpi-badge badge-red">Requer atencao</span></div>
+      <div class="kpi-card" id="kpiOrcamentoCard"><div class="kpi-value" id="kpiOrcamento">0%</div><div class="kpi-label">ORCAMENTO VS GASTO</div><span class="kpi-badge badge-blue">% utilizado</span></div>
+      <div class="kpi-card"><div class="kpi-value" id="kpiHoras">0</div><div class="kpi-label">TOTAL DE HORAS</div><span class="kpi-badge badge-orange">Horas registradas</span></div>
+      <div class="kpi-card"><div class="kpi-value" id="kpiTarefas">0</div><div class="kpi-label">TAREFAS PENDENTES</div><span class="kpi-badge badge-red">A fazer</span></div>
+    </div>
+    <div class="content-grid" id="ownerSummarySection">
+      <div class="card"><h3>Resumo Financeiro (Orcamento x Gasto)</h3><div id="pieFinanceiro"><div class="loading">Carregando...</div></div></div>
+      <div class="card"><h3>Resumo de Prazos</h3><div id="pieResumoPrazos"><div class="loading">Carregando...</div></div></div>
+    </div>
+    <div class="content-grid">
+      <div class="card"><h3>Cronograma dos Projetos</h3><div id="ganttContainer"><div class="loading">Carregando...</div></div></div>
+      <div class="card"><h3>Acompanhamento de Custos</h3><div id="costChart"><div class="loading">Carregando...</div></div></div>
+    </div>
+    <div class="content-grid">
+      <div class="card"><h3>Alertas (desvios detectados automaticamente)</h3><div id="alertsContainer"><div class="loading">Carregando...</div></div></div>
+      <div class="card"><h3>Projetos Recentes</h3><div id="projectsTable"><div class="loading">Carregando...</div></div></div>
+    </div>
+  </div>
+
+  <!-- PROJETOS -->
+  <div class="view-section" id="view-projetos">
+    <div class="header">
+      <div><h1>Projetos</h1><p>Todos os projetos da organizacao</p></div>
+      <div class="header-right">
+        <label class="file-input-label">📥 Importar Excel<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importProjects(this)"></label>
+        <button class="btn btn-secondary" onclick="exportProjects()">📤 Exportar Excel</button>
+        <button class="btn btn-primary" onclick="openProjectModal()">+ Novo Projeto</button>
+      </div>
+    </div>
+    <p class="import-hint">Planilha de importacao deve ter colunas: name, description, budget, spent, status, responsible, deadline (AAAA-MM-DD)</p>
+    <div class="card"><div id="projetosFullTable"><div class="loading">Carregando...</div></div></div>
+    <div class="card" style="margin-top:16px;">
+      <h3>Curva S (Planejado x Realizado)</h3>
+      <select class="input" id="curvaSProjectSelect" style="width:260px;" onchange="renderCurvaS()"></select>
+      <div class="curva-s-wrap" id="curvaSContainer"><div class="loading">Selecione um projeto</div></div>
+    </div>
+  </div>
+
+  <!-- TAREFAS (KANBAN) -->
+  <div class="view-section" id="view-tarefas">
+    <div class="header">
+      <div><h1>Tarefas</h1><p>Arraste os cards entre as colunas para mudar o status</p></div>
+      <div class="header-right">
+        <label class="file-input-label">📥 Importar Excel<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importTasks(this)"></label>
+        <label class="file-input-label">🏗️ Importar Lista de Servicos (Obra)<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importBoq(this)"></label>
+        <button class="btn btn-secondary" onclick="exportTasks()">📤 Exportar Excel</button>
+        <button class="btn btn-primary" onclick="openTaskModal()">+ Nova Tarefa</button>
+      </div>
+    </div>
+    <p class="import-hint">Planilha de importacao deve ter colunas: title, project (nome do projeto), description, status, priority, responsible, deadline (AAAA-MM-DD). "Lista de Servicos (Obra)" le planilhas reais de orcamento/BOQ com varias abas, cabecalho fora da linha 1 e linhas de subtotal - servicos sao agrupados em tarefas macro por setor, com os subitens dentro.</p>
+    <input type="text" id="taskSearchInput" class="input" placeholder="Buscar tarefa por titulo (inclui subitens)..." oninput="loadKanban()" style="max-width:400px;">
+    <div class="kanban-board">
+      <div class="kanban-col" data-status="pending" ondragover="event.preventDefault(); this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="onKanbanDrop(event, 'pending')">
+        <h4>Pendente <span id="countPending">0</span></h4>
+        <div id="kanbanPending"></div>
+      </div>
+      <div class="kanban-col" data-status="in_progress" ondragover="event.preventDefault(); this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="onKanbanDrop(event, 'in_progress')">
+        <h4>Em Andamento <span id="countInProgress">0</span></h4>
+        <div id="kanbanInProgress"></div>
+      </div>
+      <div class="kanban-col" data-status="done" ondragover="event.preventDefault(); this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="onKanbanDrop(event, 'done')">
+        <h4>Concluida <span id="countDone">0</span></h4>
+        <div id="kanbanDone"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUPRIMENTOS -->
+  <div class="view-section" id="view-suprimentos">
+    <div class="header">
+      <div><h1>Suprimentos</h1><p>Compras, materiais e controle de entrada/saida</p></div>
+      <div class="header-right">
+        <button class="btn btn-secondary" onclick="openMaterialModal()">+ Novo Material</button>
+        <button class="btn btn-primary" onclick="openMovementModal()">+ Registrar Movimentacao</button>
+      </div>
+    </div>
+    <div id="suprimentosInsights"></div>
+    <div class="tabs">
+      <button class="tab-btn active" id="tabMateriais" onclick="switchSuprimentosTab('materiais')">Saldo por Material</button>
+      <button class="tab-btn" id="tabMovimentacoes" onclick="switchSuprimentosTab('movimentacoes')">Historico de Movimentacoes</button>
+    </div>
+    <div class="card" id="panelMateriais"><div id="materiaisTable"><div class="loading">Carregando...</div></div></div>
+    <div class="card hidden" id="panelMovimentacoes"><div id="movimentacoesTable"><div class="loading">Carregando...</div></div></div>
+  </div>
+
+  <!-- DESPESAS -->
+  <div class="view-section" id="view-despesas">
+    <div class="header">
+      <div><h1>Despesas</h1><p>Lancamento de gastos gerais (mao de obra, terceiros, notas fiscais)</p></div>
+      <div class="header-right"><button class="btn btn-primary" onclick="openExpenseModal()">+ Nova Despesa</button></div>
+    </div>
+    <div id="despesasInsights"></div>
+    <div class="card"><div id="despesasTable"><div class="loading">Carregando...</div></div></div>
+  </div>
+
+  <!-- RISCOS E PENDENCIAS -->
+  <div class="view-section" id="view-riscos">
+    <div class="header">
+      <div><h1>Riscos e Pendencias</h1><p>Registro e acompanhamento de riscos e pendencias por projeto</p></div>
+      <div class="header-right"><button class="btn btn-primary" onclick="openRiskModal()">+ Novo Registro</button></div>
+    </div>
+    <div id="riscosInsights"></div>
+    <div class="card"><div id="riscosTable"><div class="loading">Carregando...</div></div></div>
+  </div>
+
+  <!-- EQUIPE -->
+  <div class="view-section" id="view-equipe">
+    <div class="header">
+      <div><h1>Equipe</h1><p>Usuarios da organizacao</p></div>
+      <div class="header-right"><button class="btn btn-primary" onclick="openUserModal()">+ Convidar Usuario</button></div>
+    </div>
+    <div class="card"><div id="equipeTable"><div class="loading">Carregando...</div></div></div>
+  </div>
+
+  <!-- CONFIGURACOES -->
+  <div class="view-section" id="view-configuracoes">
+    <div class="header"><div><h1>Configuracoes</h1><p>Dados da sua conta e organizacao</p></div></div>
+    <div class="content-grid">
+      <div class="card">
+        <h3>Organizacao</h3>
+        <div class="error" id="orgError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+        <label class="field">Nome da Organizacao</label>
+        <input class="input" id="cfgOrgName" type="text">
+        <button class="btn btn-primary" onclick="saveOrganization()">Salvar</button>
+      </div>
+      <div class="card">
+        <h3>Sua Conta</h3>
+        <p style="font-size:13px;color:#374151;margin-bottom:6px;"><strong>Nome:</strong> <span id="cfgUserName"></span></p>
+        <p style="font-size:13px;color:#374151;margin-bottom:6px;"><strong>Email:</strong> <span id="cfgUserEmail"></span></p>
+        <p style="font-size:13px;color:#374151;"><strong>Perfil:</strong> <span id="cfgUserRole"></span></p>
+      </div>
+      <div class="card" id="cfgBillingCard">
+        <h3>Assinatura</h3>
+        <p style="font-size:13px;color:#374151;margin-bottom:6px;"><strong>Plano:</strong> <span id="cfgPlanName"></span></p>
+        <p style="font-size:13px;color:#374151;margin-bottom:12px;"><strong>Status:</strong> <span id="cfgSubStatus"></span></p>
+        <button class="btn btn-secondary" onclick="openBillingFromSettings()">Gerenciar assinatura</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- MODAL PROJETO -->
+<div class="modal-overlay" id="projectModal">
+<div class="modal-box">
+<h2 style="margin-bottom:20px;" id="projectModalTitle">Novo Projeto</h2>
+<div class="error" id="projectError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+<label class="field">Nome do Projeto</label>
+<input id="inputName" type="text" class="input">
+<label class="field">Descricao</label>
+<textarea id="inputDesc" class="input" rows="2" style="resize:vertical;"></textarea>
+<div id="projectFinanceFields">
+<label class="field">Orcamento (R$)</label>
+<input id="inputBudget" type="number" class="input">
+<label class="field">Gasto ate agora (R$)</label>
+<input id="inputSpent" type="number" class="input">
+</div>
+<label class="field">Status</label>
+<select id="inputStatus" class="input">
+<option value="active">Ativo</option>
+<option value="delayed">Atrasado</option>
+<option value="completed">Concluido</option>
+<option value="reprojetado">Reprojetado</option>
+</select>
+<label class="field">Responsavel</label>
+<input id="inputResponsible" type="text" class="input">
+<label class="field">Data de Inicio</label>
+<input id="inputStartDate" type="date" class="input">
+<label class="field">Prazo</label>
+<input id="inputDeadline" type="date" class="input">
+<label class="field">Anexar planilha completa do projeto (opcional)</label>
+<input id="projectMasterSheet" type="file" accept=".xlsx,.xls" class="input">
+<p class="import-hint">A planilha pode ter varias abas (Tarefas, Despesas, Riscos). A plataforma distribui cada aba automaticamente para o modulo certo.</p>
+<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
+<button class="btn btn-secondary" onclick="closeModal('projectModal')">Cancelar</button>
+<button class="btn btn-primary" onclick="saveProject()">Salvar</button>
+</div>
+</div>
+</div>
+
+<!-- MODAL TAREFA -->
+<div class="modal-overlay" id="taskModal">
+<div class="modal-box">
+<h2 style="margin-bottom:20px;" id="taskModalTitle">Nova Tarefa</h2>
+<div class="error" id="taskError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+<label class="field">Titulo</label>
+<input id="taskTitle" type="text" class="input">
+<label class="field">Descricao</label>
+<textarea id="taskDesc" class="input" rows="2" style="resize:vertical;"></textarea>
+<label class="field">Projeto</label>
+<select id="taskProject" class="input" onchange="fillTaskParentSelect(this.value, null)"></select>
+<label class="field">Tarefa Pai (EAP - opcional)</label>
+<select id="taskParent" class="input"><option value="">Nenhuma (tarefa de topo)</option></select>
+<label class="field">Status</label>
+<select id="taskStatus" class="input">
+<option value="pending">Pendente</option>
+<option value="in_progress">Em andamento</option>
+<option value="done">Concluida</option>
+</select>
+<label class="field">Prioridade</label>
+<select id="taskPriority" class="input">
+<option value="low">Baixa</option>
+<option value="medium">Media</option>
+<option value="high">Alta</option>
+</select>
+<label class="field">Responsavel</label>
+<select id="taskAssignee" class="input"><option value="">Sem responsavel</option></select>
+<label class="field">Data de Inicio</label>
+<input id="taskStartDate" type="date" class="input">
+<label class="field">Prazo</label>
+<input id="taskDeadline" type="date" class="input">
+<label class="field">Avanco fisico (%)</label>
+<input id="taskProgress" type="number" min="0" max="100" class="input" value="0">
+<label class="field">Horas trabalhadas</label>
+<input id="taskHours" type="number" min="0" class="input" value="0">
+<div id="taskCostField">
+<label class="field">Custo (R$)</label>
+<input id="taskCost" type="number" min="0" class="input" value="0">
+</div>
+<label class="field" style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="taskMilestone" style="width:auto;margin:0;"> Marcar como Marco (milestone)</label>
+<div id="taskChildrenWrap" class="hidden" style="margin-top:16px;border-top:1px solid #e5e7eb;padding-top:12px;">
+<h3 style="font-size:13px;margin-bottom:8px;">Subitens desta tarefa</h3>
+<div id="taskChildrenList" style="max-height:200px;overflow-y:auto;"></div>
+</div>
+<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
+<button class="btn btn-secondary" onclick="closeModal('taskModal')">Cancelar</button>
+<button class="btn btn-primary" onclick="saveTask()">Salvar</button>
+</div>
+</div>
+</div>
+
+<!-- MODAL USUARIO -->
+<div class="modal-overlay" id="userModal">
+<div class="modal-box">
+<h2 style="margin-bottom:20px;">Convidar Usuario</h2>
+<div class="error" id="userError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+<label class="field">Nome</label>
+<input id="userNameInput" type="text" class="input">
+<label class="field">Email</label>
+<input id="userEmailInput" type="email" class="input">
+<label class="field">Senha temporaria</label>
+<input id="userPasswordInput" type="password" class="input" placeholder="Minimo 6 caracteres">
+<label class="field">Perfil</label>
+<select id="userRoleInput" class="input">
+<option value="engenheiro">Engenheiro (sem acesso financeiro)</option>
+<option value="coordenador">Coordenador (acesso total)</option>
+<option value="admin">Administrador (acesso total)</option>
+</select>
+<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
+<button class="btn btn-secondary" onclick="closeModal('userModal')">Cancelar</button>
+<button class="btn btn-primary" onclick="saveUser()">Convidar</button>
+</div>
+</div>
+</div>
+
+<!-- MODAL MATERIAL -->
+<div class="modal-overlay" id="materialModal">
+<div class="modal-box">
+<h2 style="margin-bottom:20px;">Novo Material</h2>
+<div class="error" id="materialError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+<label class="field">Nome do Material</label>
+<input id="materialName" type="text" class="input" placeholder="Ex: Cimento, Areia, Vergalhao...">
+<label class="field">Unidade</label>
+<input id="materialUnit" type="text" class="input" placeholder="Ex: sc, m3, kg, un">
+<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
+<button class="btn btn-secondary" onclick="closeModal('materialModal')">Cancelar</button>
+<button class="btn btn-primary" onclick="saveMaterial()">Salvar</button>
+</div>
+</div>
+</div>
+
+<!-- MODAL MOVIMENTACAO -->
+<div class="modal-overlay" id="movementModal">
+<div class="modal-box">
+<h2 style="margin-bottom:20px;">Registrar Movimentacao</h2>
+<div class="error" id="movementError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+<label class="field">Material</label>
+<select id="movementMaterial" class="input"></select>
+<label class="field">Tipo</label>
+<select id="movementType" class="input">
+<option value="entrada">Entrada (compra/recebimento)</option>
+<option value="saida">Saida (uso na obra)</option>
+</select>
+<label class="field">Quantidade</label>
+<input id="movementQty" type="number" class="input">
+<label class="field">Valor unitario (R$, opcional)</label>
+<input id="movementValue" type="number" class="input">
+<label class="field">Projeto (opcional)</label>
+<select id="movementProject" class="input"><option value="">Nenhum</option></select>
+<label class="field">Responsavel</label>
+<input id="movementResponsible" type="text" class="input">
+<label class="field">Observacao</label>
+<input id="movementNotes" type="text" class="input">
+<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
+<button class="btn btn-secondary" onclick="closeModal('movementModal')">Cancelar</button>
+<button class="btn btn-primary" onclick="saveMovement()">Registrar</button>
+</div>
+</div>
+</div>
+
+<!-- MODAL DESPESA -->
+<div class="modal-overlay" id="expenseModal">
+<div class="modal-box">
+<h2 style="margin-bottom:20px;">Nova Despesa</h2>
+<div class="error" id="expenseError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+<label class="field">Projeto</label>
+<select id="expenseProject" class="input"></select>
+<label class="field">Descricao</label>
+<input id="expenseDesc" type="text" class="input" placeholder="Ex: Pagamento equipe terceirizada">
+<label class="field">Categoria</label>
+<input id="expenseCategory" type="text" class="input" placeholder="Ex: Mao de obra, Nota fiscal, Frete">
+<label class="field">Valor (R$)</label>
+<input id="expenseAmount" type="number" class="input">
+<label class="field">Data</label>
+<input id="expenseDate" type="date" class="input">
+<label class="field">Responsavel</label>
+<input id="expenseResponsible" type="text" class="input">
+<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
+<button class="btn btn-secondary" onclick="closeModal('expenseModal')">Cancelar</button>
+<button class="btn btn-primary" onclick="saveExpense()">Salvar</button>
+</div>
+</div>
+</div>
+
+<!-- MODAL RISCO/PENDENCIA -->
+<div class="modal-overlay" id="riskModal">
+<div class="modal-box">
+<h2 style="margin-bottom:20px;">Novo Registro</h2>
+<div class="error" id="riskError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+<label class="field">Projeto</label>
+<select id="riskProject" class="input"></select>
+<label class="field">Tipo</label>
+<select id="riskType" class="input">
+<option value="risco">Risco</option>
+<option value="pendencia">Pendencia</option>
+</select>
+<label class="field">Titulo</label>
+<input id="riskTitle" type="text" class="input">
+<label class="field">Descricao</label>
+<textarea id="riskDesc" class="input" rows="2" style="resize:vertical;"></textarea>
+<label class="field">Probabilidade (para riscos)</label>
+<select id="riskProbability" class="input">
+<option value="">-</option>
+<option value="baixa">Baixa</option>
+<option value="media">Media</option>
+<option value="alta">Alta</option>
+</select>
+<label class="field">Impacto</label>
+<select id="riskImpact" class="input">
+<option value="">-</option>
+<option value="baixo">Baixo</option>
+<option value="medio">Medio</option>
+<option value="alto">Alto</option>
+</select>
+<label class="field">Status</label>
+<select id="riskStatus" class="input">
+<option value="aberto">Aberto</option>
+<option value="mitigado">Mitigado</option>
+<option value="encerrado">Encerrado</option>
+</select>
+<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
+<button class="btn btn-secondary" onclick="closeModal('riskModal')">Cancelar</button>
+<button class="btn btn-primary" onclick="saveRisk()">Salvar</button>
+</div>
+</div>
+</div>
+
+<!-- MODAL MAPEAMENTO DE IMPORTACAO -->
+<div class="modal-overlay" id="importMappingModal">
+<div class="modal-box" style="width:560px;">
+<h2 style="margin-bottom:8px;" id="importMappingTitle">Confirmar importacao</h2>
+<p style="font-size:12px;color:#6b7280;margin-bottom:16px;">Detectamos as colunas da sua planilha automaticamente. Confira e ajuste se necessario antes de importar.</p>
+<div class="error" id="importMappingError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+<div id="importMappingFields"></div>
+<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;">
+<button class="btn btn-secondary" onclick="closeModal('importMappingModal')">Cancelar</button>
+<button class="btn btn-primary" onclick="confirmImportMapping()">Importar</button>
+</div>
+</div>
+</div>
+
+<!-- MODAL BOQ -->
+<div class="modal-overlay" id="boqModal">
+<div class="modal-box" style="width:560px;">
+<h2 style="margin-bottom:8px;">Importar Lista de Servicos</h2>
+<p style="font-size:12px;color:#6b7280;margin-bottom:16px;">Selecione o projeto que vai receber os servicos desta planilha.</p>
+<div class="error" id="boqError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+<label class="field">Projeto</label>
+<select id="boqProjectSelect" class="input"></select>
+<div id="boqSummary"></div>
+<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;">
+<button class="btn btn-secondary" onclick="closeModal('boqModal')">Cancelar</button>
+<button class="btn btn-primary" id="boqConfirmBtn" style="display:none;" onclick="confirmBoqImport()">Importar Tarefas</button>
+</div>
+</div>
+</div>
+
+<script>
+const API = '';
+let currentUser = null;
+let editingProjectId = null;
+let editingTaskId = null;
+let cachedProjects = [];
+let cachedMaterials = [];
+let cachedUsers = [];
+let draggedTaskId = null;
+
+async function loadUsersCache() {
+  const res = await fetch(API + '/api/v1/users', { headers: apiHeaders() });
+  cachedUsers = await res.json();
+}
+function fillTaskAssigneeSelect(selectedId) {
+  const sel = document.getElementById('taskAssignee');
+  sel.innerHTML = '<option value="">Sem responsavel</option>' + cachedUsers.map(u => '<option value="' + u.id + '"' + (u.id === selectedId ? ' selected' : '') + '>' + u.name + '</option>').join('');
+}
+
+function getToken() { return localStorage.getItem('cf_token'); }
+function setToken(t) { localStorage.setItem('cf_token', t); }
+function clearToken() { localStorage.removeItem('cf_token'); }
+
+function apiHeaders() {
+  const h = { 'Content-Type': 'application/json' };
+  const t = getToken();
+  if (t) h['Authorization'] = 'Bearer ' + t;
+  return h;
+}
+
+function showScreen(s) {
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('signupScreen').classList.add('hidden');
+  if (s === 'login') document.getElementById('loginScreen').classList.remove('hidden');
+  else document.getElementById('signupScreen').classList.remove('hidden');
+}
+
+async function login() {
+  const email = document.getElementById('loginEmail').value;
+  const password = document.getElementById('loginPassword').value;
+  const error = document.getElementById('loginError');
+  const loader = document.getElementById('loginLoader');
+  error.style.display = 'none';
+  if (!email || !password) { error.textContent = 'Preencha todos os campos'; error.style.display = 'block'; return; }
+  loader.style.display = 'block';
+  try {
+    const res = await fetch(API + '/api/v1/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erro ao fazer login');
+    setToken(data.token);
+    loader.style.display = 'none';
+    enterDashboard(data);
+  } catch (e) { loader.style.display = 'none'; error.textContent = e.message; error.style.display = 'block'; }
+}
+
+async function signup() {
+  const name = document.getElementById('signupName').value;
+  const email = document.getElementById('signupEmail').value;
+  const organizationName = document.getElementById('signupOrg').value;
+  const password = document.getElementById('signupPassword').value;
+  const error = document.getElementById('signupError');
+  const loader = document.getElementById('signupLoader');
+  error.style.display = 'none';
+  if (!name || !email || !organizationName || !password) { error.textContent = 'Preencha todos os campos'; error.style.display = 'block'; return; }
+  if (password.length < 6) { error.textContent = 'Senha deve ter no minimo 6 caracteres'; error.style.display = 'block'; return; }
+  loader.style.display = 'block';
+  try {
+    const res = await fetch(API + '/api/v1/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, email, password, organizationName }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erro ao criar conta');
+    setToken(data.token);
+    loader.style.display = 'none';
+    enterDashboard(data);
+  } catch (e) { loader.style.display = 'none'; error.textContent = e.message; error.style.display = 'block'; }
+}
+
+function logout() { clearToken(); location.reload(); }
+
+function isOwnerUI() {
+  return currentUser && currentUser.role === 'admin';
+}
+
+function applyRolePermissions() {
+  const financeOk = canSeeFinanceUI();
+  const despesasNav = document.querySelector('.sidebar nav a[data-view="despesas"]');
+  const orcamentoNav = document.querySelector('.sidebar nav a[data-view="orcamento"]');
+  if (despesasNav) despesasNav.classList.toggle('hidden', !financeOk);
+  if (orcamentoNav) orcamentoNav.classList.toggle('hidden', !financeOk);
+  document.getElementById('kpiOrcamentoCard') && document.getElementById('kpiOrcamentoCard').classList.toggle('hidden', !financeOk);
+  document.getElementById('ownerSummarySection') && document.getElementById('ownerSummarySection').classList.toggle('hidden', !isOwnerUI());
+}
+
+let selectedPlanKey = null;
+let lastBillingStatus = null;
+
+async function enterDashboard(data) {
+  currentUser = data.user;
+  currentUser.organization = data.organization;
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('signupScreen').classList.add('hidden');
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const billingReturn = urlParams.get('billing');
+  let status = null;
+  try {
+    const res = await fetch(API + '/api/v1/billing/status', { headers: apiHeaders() });
+    status = await res.json();
+  } catch (e) { /* se falhar a checagem, segue para o painel normalmente */ }
+
+  if (status && !status.active && billingReturn === 'success') {
+    for (let i = 0; i < 5 && status && !status.active; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      try {
+        const res2 = await fetch(API + '/api/v1/billing/status', { headers: apiHeaders() });
+        status = await res2.json();
+      } catch (e) { break; }
+    }
+  }
+
+  if (status && !status.active) { showPaywall(status); return; }
+
+  document.getElementById('paywallScreen').classList.add('hidden');
+  document.getElementById('dashboard').style.display = 'block';
+  document.getElementById('userAvatar').textContent = (data.user.name || 'U')[0].toUpperCase();
+  document.getElementById('userName').textContent = data.user.name;
+  document.getElementById('userOrg').textContent = data.organization.name;
+  document.getElementById('headerOrg').textContent = 'ConstructFlow - ' + data.organization.name;
+  const now = new Date();
+  document.getElementById('headerDate').textContent = now.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
+  applyRolePermissions();
+  showView('visaogeral');
+}
+
+async function showPaywall(status) {
+  lastBillingStatus = status;
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('signupScreen').classList.add('hidden');
+  document.getElementById('paywallScreen').classList.remove('hidden');
+
+  const backLink = document.getElementById('paywallBackLink');
+  backLink.innerHTML = status.active ? '<a onclick="backToDashboard()">Voltar ao painel</a> &middot; <a onclick="logout()">Sair</a>' : '<a onclick="logout()">Sair</a>';
+
+  const isAdmin = currentUser.role === 'admin';
+  document.getElementById('paywallFormWrap').classList.add('hidden');
+  if (!isAdmin) {
+    document.getElementById('paywallTitle').textContent = 'Assinatura pendente';
+    document.getElementById('paywallSubtitle').textContent = 'A assinatura desta empresa esta ' + (status.subscriptionStatus === 'overdue' ? 'com pagamento em atraso' : 'pendente de pagamento') + '. Fale com o administrador da sua organizacao para regularizar.';
+    document.getElementById('plansContainer').innerHTML = '';
+    return;
+  }
+  document.getElementById('paywallTitle').textContent = status.subscriptionStatus === 'overdue' ? 'Pagamento em atraso' : 'Escolha um plano para continuar';
+  document.getElementById('paywallSubtitle').textContent = status.subscriptionStatus === 'overdue' ? 'A ultima cobranca nao foi paga. Regularize para reativar o acesso.' : 'Sua empresa ainda nao tem uma assinatura ativa. Escolha um plano para liberar o acesso.';
+
+  try {
+    const res = await fetch(API + '/api/v1/billing/plans', { headers: apiHeaders() });
+    const plans = await res.json();
+    const container = document.getElementById('plansContainer');
+    container.innerHTML = Object.entries(plans).map(([key, p]) => (
+      '<div class="kpi-card" style="cursor:pointer;border:2px solid ' + (selectedPlanKey === key ? '#4f46e5' : 'transparent') + ';" onclick="selectPlan(\'' + key + '\')">'
+      + '<div class="kpi-label">' + p.name.toUpperCase() + '</div>'
+      + '<div class="kpi-value">R$ ' + p.price.toFixed(2).replace('.', ',') + '<span style="font-size:12px;color:#6b7280;">/mes</span></div>'
+      + '<p style="font-size:12px;color:#6b7280;margin-top:8px;">' + p.description + '</p>'
+      + '</div>'
+    )).join('');
+  } catch (e) { document.getElementById('paywallError').textContent = 'Erro ao carregar planos'; document.getElementById('paywallError').style.display = 'block'; }
+}
+
+function backToDashboard() {
+  document.getElementById('paywallScreen').classList.add('hidden');
+  document.getElementById('dashboard').style.display = 'block';
+  showView('configuracoes');
+}
+
+function selectPlan(key) {
+  selectedPlanKey = key;
+  document.querySelectorAll('#plansContainer .kpi-card').forEach(el => el.style.border = '2px solid transparent');
+  document.getElementById('paywallFormWrap').classList.remove('hidden');
+  showPaywall(lastBillingStatus || { subscriptionStatus: 'pending' });
+}
+
+async function confirmSubscribe() {
+  const error = document.getElementById('paywallError');
+  const loader = document.getElementById('paywallLoader');
+  error.style.display = 'none';
+  if (!selectedPlanKey) { error.textContent = 'Selecione um plano'; error.style.display = 'block'; return; }
+  loader.style.display = 'block';
+  try {
+    const res = await fetch(API + '/api/v1/billing/subscribe', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ planKey: selectedPlanKey }) });
+    const d = await res.json();
+    loader.style.display = 'none';
+    if (!res.ok) throw new Error(d.error || 'Erro ao iniciar pagamento');
+    if (d.checkoutUrl) { window.location.href = d.checkoutUrl; }
+    else { error.textContent = 'Nao foi possivel obter o link de pagamento.'; error.style.display = 'block'; }
+  } catch (e) { loader.style.display = 'none'; error.textContent = e.message; error.style.display = 'block'; }
+}
+
+function showView(view) {
+  document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+  document.getElementById('view-' + view).classList.add('active');
+  document.querySelectorAll('.sidebar nav a').forEach(a => a.classList.remove('active'));
+  const navEl = document.querySelector('.sidebar nav a[data-view="' + view + '"]');
+  if (navEl) navEl.classList.add('active');
+
+  if (view === 'visaogeral') loadDashboard();
+  else if (view === 'projetos') loadProjetosView();
+  else if (view === 'tarefas') loadKanban();
+  else if (view === 'suprimentos') loadSuprimentosView();
+  else if (view === 'despesas') loadDespesasView();
+  else if (view === 'riscos') loadRiscosView();
+  else if (view === 'equipe') loadEquipeView();
+  else if (view === 'configuracoes') loadConfiguracoesView();
+}
+
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+  const err = document.querySelector('#' + id + ' .error');
+  if (err) err.style.display = 'none';
+}
+
+function fmtMoney(v) { return 'R$ ' + (v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function fmtDate(d) { return d ? new Date(d).toLocaleDateString('pt-BR') : '-'; }
+
+// ============ VISAO GERAL ============
+async function loadDashboard() {
+  try {
+    const [dashRes, projRes, alertRes] = await Promise.all([
+      fetch(API + '/api/v1/dashboard', { headers: apiHeaders() }),
+      fetch(API + '/api/v1/projects', { headers: apiHeaders() }),
+      fetch(API + '/api/v1/alerts', { headers: apiHeaders() })
+    ]);
+    const dash = await dashRes.json();
+    const projects = await projRes.json();
+    const alerts = await alertRes.json();
+    cachedProjects = projects;
+    document.getElementById('kpiProjetos').textContent = dash.projetosAndamento;
+    document.getElementById('kpiAtrasados').textContent = dash.atrasados;
+    document.getElementById('kpiOrcamento').textContent = dash.orcamentoVsGasto + '%';
+    document.getElementById('kpiHoras').textContent = dash.totalHoras;
+    document.getElementById('kpiTarefas').textContent = dash.tarefasPendentes;
+    renderGantt(projects);
+    renderCostChart(projects);
+    renderAlerts(alerts);
+    renderProjectsTable(projects);
+    if (isOwnerUI()) {
+      renderPieFinanceiro(dash.resumoFinanceiro);
+      renderPiePrazos(dash.prazoDistribuicao);
+    }
+  } catch (e) { console.error('Erro ao carregar dashboard:', e); }
+}
+
+function makePieGradient(slices) {
+  const total = slices.reduce((s, x) => s + x.value, 0);
+  if (total <= 0) return { gradient: 'conic-gradient(#e5e7eb 0deg 360deg)', total: 0 };
+  let acc = 0;
+  const parts = slices.filter(s => s.value > 0).map(s => {
+    const start = acc / total * 360;
+    acc += s.value;
+    const end = acc / total * 360;
+    return s.color + ' ' + start + 'deg ' + end + 'deg';
+  });
+  return { gradient: 'conic-gradient(' + parts.join(', ') + ')', total };
+}
+
+function renderPieFinanceiro(resumo) {
+  const c = document.getElementById('pieFinanceiro');
+  if (!resumo || (!resumo.orcamentoTotal && !resumo.gastoTotal)) { c.innerHTML = '<div class="loading">Sem dados financeiros ainda</div>'; return; }
+  const saldo = Math.max(0, resumo.orcamentoTotal - resumo.gastoTotal);
+  const slices = [
+    { label: 'Gasto', value: resumo.gastoTotal, color: '#ef4444' },
+    { label: 'Saldo do Orcamento', value: saldo, color: '#22c55e' }
+  ];
+  const { gradient } = makePieGradient(slices);
+  c.innerHTML = '<div class="pie-wrap">'
+    + '<div class="pie-chart" style="background:' + gradient + '"></div>'
+    + '<div class="pie-legend">'
+    + slices.map(s => '<div class="pie-legend-item"><span class="pie-legend-dot" style="background:' + s.color + '"></span>' + s.label + ': ' + fmtMoney(s.value) + '</div>').join('')
+    + '<div class="pie-legend-item"><strong>Orcamento total: ' + fmtMoney(resumo.orcamentoTotal) + '</strong></div>'
+    + '</div></div>';
+}
+
+function renderPiePrazos(dist) {
+  const c = document.getElementById('pieResumoPrazos');
+  if (!dist) { c.innerHTML = '<div class="loading">Sem dados ainda</div>'; return; }
+  const slices = [
+    { label: 'Atrasado', value: dist.atrasado, color: '#ef4444' },
+    { label: 'Atendido (Concluido)', value: dist.concluido, color: '#3b82f6' },
+    { label: 'No Prazo', value: dist.ativo, color: '#22c55e' },
+    { label: 'Reprojetado', value: dist.reprojetado, color: '#a855f7' }
+  ];
+  const { gradient, total } = makePieGradient(slices);
+  if (!total) { c.innerHTML = '<div class="loading">Nenhum projeto cadastrado</div>'; return; }
+  c.innerHTML = '<div class="pie-wrap">'
+    + '<div class="pie-chart" style="background:' + gradient + '"></div>'
+    + '<div class="pie-legend">'
+    + slices.map(s => '<div class="pie-legend-item"><span class="pie-legend-dot" style="background:' + s.color + '"></span>' + s.label + ': ' + s.value + '</div>').join('')
+    + '</div></div>';
+}
+
+function renderGantt(projects) {
+  const c = document.getElementById('ganttContainer');
+  const withDates = projects.filter(p => p.startDate || p.deadline);
+  if (!withDates.length) { c.innerHTML = '<div class="loading">Cadastre datas de inicio/prazo nos projetos para ver o cronograma</div>'; return; }
+
+  const now = new Date();
+  const starts = withDates.map(p => new Date(p.startDate || p.createdAt));
+  const ends = withDates.map(p => new Date(p.deadline || now));
+  let minDate = new Date(Math.min.apply(null, starts.concat([now])));
+  let maxDate = new Date(Math.max.apply(null, ends.concat([now])));
+  minDate = new Date(minDate.getTime() - 3 * 24 * 3600 * 1000);
+  maxDate = new Date(maxDate.getTime() + 3 * 24 * 3600 * 1000);
+  const totalMs = maxDate - minDate;
+  const todayPct = ((now - minDate) / totalMs) * 100;
+
+  let html = '<div class="gantt-legend">'
+    + '<span><span class="cal-legend-dot" style="background:#d1d5db;"></span>Planejado</span>'
+    + '<span><span class="cal-legend-dot" style="background:#22c55e;"></span>Realizado (no ritmo)</span>'
+    + '<span><span class="cal-legend-dot" style="background:#ef4444;"></span>Realizado (atrasado)</span>'
+    + '</div>';
+  html += '<div class="gantt-scale-labels"><span>' + minDate.toLocaleDateString('pt-BR') + '</span><span>' + maxDate.toLocaleDateString('pt-BR') + '</span></div>';
+  html += '<div class="gantt-real">';
+  html += '<div class="gantt-today-line" style="left:' + todayPct + '%"><span class="gantt-today-label">Hoje</span></div>';
+
+  withDates.forEach(p => {
+    const s = new Date(p.startDate || p.createdAt);
+    const e = new Date(p.deadline || now);
+    const leftPct = ((s - minDate) / totalMs) * 100;
+    const widthPct = Math.max(1, ((e - s) / totalMs) * 100);
+    const tasks = p.tasks || [];
+    const avgProgress = tasks.length ? Math.round(tasks.reduce((sum, t) => sum + (t.progress || 0), 0) / tasks.length) : (p.status === 'completed' ? 100 : 0);
+    const isLate = (e < now && p.status !== 'completed') || p.status === 'delayed';
+    const isReprojetado = p.status === 'reprojetado';
+    const realizedColor = isLate ? '#ef4444' : isReprojetado ? '#a855f7' : '#22c55e';
+    const realizedWidthPct = widthPct * (avgProgress / 100);
+
+    html += '<div class="gantt-row">'
+      + '<div class="gantt-row-label">' + p.name + ' &middot; ' + avgProgress + '% concluido</div>'
+      + '<div class="gantt-track-real">'
+      + '<div class="gantt-planned" style="left:' + leftPct + '%;width:' + widthPct + '%;"></div>'
+      + '<div class="gantt-realized" style="left:' + leftPct + '%;width:' + realizedWidthPct + '%;background:' + realizedColor + ';"></div>'
+      + '</div></div>';
+  });
+
+  html += '</div>';
+  c.innerHTML = html;
+}
+
+function renderCostChart(projects) {
+  const c = document.getElementById('costChart');
+  if (!projects || projects.length === 0) { c.innerHTML = '<div class="loading">Nenhum projeto para exibir</div>'; return; }
+  let h = '';
+  projects.forEach(p => {
+    const pct = p.budget > 0 ? Math.min(Math.round((p.spent / p.budget) * 100), 100) : 0;
+    const over = p.budget > 0 && p.spent > p.budget;
+    h += '<div class="cost-bar"><div class="cost-label">' + p.name + '</div><div class="cost-track"><div class="cost-fill ' + (over ? 'cost-fill-red' : 'cost-fill-blue') + '" style="width:' + pct + '%"></div></div><span style="font-size:11px;color:#6b7280;width:40px;text-align:right;">' + pct + '%</span></div>';
+  });
+  c.innerHTML = h;
+}
+
+function renderAlerts(alerts) {
+  const c = document.getElementById('alertsContainer');
+  if (!alerts || alerts.length === 0) { c.innerHTML = '<div class="loading">Nenhum alerta</div>'; return; }
+  let h = '';
+  alerts.forEach(a => {
+    const iconClass = a.type === 'urgent' ? 'alert-urgent' : a.type === 'alert' ? 'alert-alert' : a.type === 'warning' ? 'alert-warning' : 'alert-info';
+    const icon = a.type === 'urgent' ? '!' : a.type === 'alert' ? '!' : a.type === 'warning' ? '!' : 'i';
+    h += '<div class="alert-item"><div class="alert-icon ' + iconClass + '">' + icon + '</div><div><strong>' + a.title + '</strong><br>' + a.message + '</div></div>';
+  });
+  c.innerHTML = h;
+}
+
+function projectStatusMeta(status) {
+  if (status === 'delayed') return { cls: 'status-delayed', label: 'Atrasado' };
+  if (status === 'completed') return { cls: 'status-completed', label: 'Concluido' };
+  if (status === 'reprojetado') return { cls: 'status-reprojetado', label: 'Reprojetado' };
+  return { cls: 'status-active', label: 'Ativo' };
+}
+
+function renderProjectsTable(projects) {
+  const c = document.getElementById('projectsTable');
+  if (!projects || projects.length === 0) { c.innerHTML = '<div class="loading">Nenhum projeto cadastrado</div>'; return; }
+  const financeOk = canSeeFinanceUI();
+  let h = '<table class="table-projects"><thead><tr><th>Projeto</th><th>Status</th>' + (financeOk ? '<th>Orcamento</th><th>Gasto</th>' : '') + '<th>Responsavel</th></tr></thead><tbody>';
+  projects.slice(0, 6).forEach(p => {
+    const meta = projectStatusMeta(p.status);
+    h += '<tr><td><strong>' + p.name + '</strong></td><td><span class="' + meta.cls + '">' + meta.label + '</span></td>' + (financeOk ? '<td>' + fmtMoney(p.budget) + '</td><td>' + fmtMoney(p.spent) + '</td>' : '') + '<td>' + (p.responsible || '-') + '</td></tr>';
+  });
+  h += '</tbody></table>';
+  c.innerHTML = h;
+}
+
+// ============ PROJETOS ============
+async function loadProjetosView() {
+  const c = document.getElementById('projetosFullTable');
+  const financeOk = canSeeFinanceUI();
+  try {
+    const res = await fetch(API + '/api/v1/projects', { headers: apiHeaders() });
+    const projects = await res.json();
+    cachedProjects = projects;
+    if (!projects || projects.length === 0) { c.innerHTML = '<div class="loading">Nenhum projeto cadastrado</div>'; return; }
+    let h = '<table class="table-projects"><thead><tr><th>Projeto</th><th>Status</th>' + (financeOk ? '<th>Orcamento</th><th>Gasto</th>' : '') + '<th>Responsavel</th><th>Prazo</th><th>Acoes</th></tr></thead><tbody>';
+    projects.forEach(p => {
+      const meta = projectStatusMeta(p.status);
+      const custoDesvio = financeOk && p.budget > 0 && p.spent > p.budget;
+      const prazoDesvio = p.deadline && new Date(p.deadline) < new Date() && p.status !== 'completed';
+      h += '<tr><td><strong>' + p.name + '</strong>' + (custoDesvio ? '<span class="deviation-badge">DESVIO CUSTO</span>' : '') + (prazoDesvio ? '<span class="deviation-badge">DESVIO PRAZO</span>' : '') + '</td><td><span class="' + meta.cls + '">' + meta.label + '</span></td>'
+        + (financeOk ? '<td>' + fmtMoney(p.budget) + '</td><td>' + fmtMoney(p.spent) + '</td>' : '')
+        + '<td>' + (p.responsible || '-') + '</td><td>' + fmtDate(p.deadline) + '</td>'
+        + '<td><button class="btn btn-sm btn-secondary" onclick="editProject(\'' + p.id + '\')">Editar</button> <button class="btn btn-sm btn-danger" onclick="deleteProject(\'' + p.id + '\')">Excluir</button></td></tr>';
+    });
+    h += '</tbody></table>';
+    c.innerHTML = h;
+    const sel = document.getElementById('curvaSProjectSelect');
+    const prevVal = sel.value;
+    sel.innerHTML = projects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+    if (prevVal && projects.some(p => p.id === prevVal)) sel.value = prevVal;
+    renderCurvaS();
+  } catch (e) { c.innerHTML = '<div class="loading">Erro ao carregar projetos</div>'; }
+}
+
+function renderCurvaS() {
+  const projectId = document.getElementById('curvaSProjectSelect').value;
+  const container = document.getElementById('curvaSContainer');
+  const p = cachedProjects.find(x => x.id === projectId);
+  if (!p) { container.innerHTML = '<div class="loading">Selecione um projeto</div>'; return; }
+  if (!p.startDate || !p.deadline) { container.innerHTML = '<div class="loading">Cadastre Data de Inicio e Prazo neste projeto para ver a Curva S</div>'; return; }
+
+  const start = new Date(p.startDate);
+  const end = new Date(p.deadline);
+  const now = new Date();
+  const totalDays = Math.max(1, (end - start) / (1000 * 60 * 60 * 24));
+  const elapsedDays = Math.min(totalDays, Math.max(0, (now - start) / (1000 * 60 * 60 * 24)));
+  const tasks = p.tasks || [];
+  const avgProgress = tasks.length ? tasks.reduce((s, t) => s + (t.progress || 0), 0) / tasks.length : (p.status === 'completed' ? 100 : 0);
+
+  const W = 600, H = 220, pad = 30;
+  function xFor(days) { return pad + (days / totalDays) * (W - 2 * pad); }
+  function yFor(pct) { return (H - pad) - (pct / 100) * (H - 2 * pad); }
+
+  const plannedPath = 'M ' + xFor(0) + ' ' + yFor(0) + ' L ' + xFor(totalDays) + ' ' + yFor(100);
+  const realizedPath = 'M ' + xFor(0) + ' ' + yFor(0) + ' L ' + xFor(elapsedDays) + ' ' + yFor(avgProgress);
+  const nowX = xFor(elapsedDays);
+  const isLate = p.status === 'delayed' || (end < now && p.status !== 'completed');
+
+  const svg = ''
+    + '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg">'
+    + '<line x1="' + pad + '" y1="' + (H - pad) + '" x2="' + (W - pad) + '" y2="' + (H - pad) + '" stroke="#e5e7eb" stroke-width="1"/>'
+    + '<line x1="' + pad + '" y1="' + pad + '" x2="' + pad + '" y2="' + (H - pad) + '" stroke="#e5e7eb" stroke-width="1"/>'
+    + '<line x1="' + nowX + '" y1="' + pad + '" x2="' + nowX + '" y2="' + (H - pad) + '" stroke="#4f46e5" stroke-width="1" stroke-dasharray="4,4"/>'
+    + '<text x="' + nowX + '" y="' + (pad - 8) + '" font-size="10" fill="#4f46e5" text-anchor="middle">Hoje</text>'
+    + '<path d="' + plannedPath + '" fill="none" stroke="#9ca3af" stroke-width="2" stroke-dasharray="5,3"/>'
+    + '<path d="' + realizedPath + '" fill="none" stroke="' + (isLate ? '#ef4444' : '#22c55e') + '" stroke-width="3"/>'
+    + '<circle cx="' + xFor(elapsedDays) + '" cy="' + yFor(avgProgress) + '" r="4" fill="' + (isLate ? '#ef4444' : '#22c55e') + '"/>'
+    + '<text x="' + pad + '" y="' + (H - 10) + '" font-size="10" fill="#6b7280">' + start.toLocaleDateString('pt-BR') + '</text>'
+    + '<text x="' + (W - pad) + '" y="' + (H - 10) + '" font-size="10" fill="#6b7280" text-anchor="end">' + end.toLocaleDateString('pt-BR') + '</text>'
+    + '<text x="' + pad + '" y="' + (pad - 8) + '" font-size="10" fill="#6b7280">100%</text>'
+    + '</svg>';
+
+  container.innerHTML = '<div class="cal-legend" style="margin-bottom:8px;">'
+    + '<span><span class="cal-legend-dot" style="background:#9ca3af;"></span>Planejado</span>'
+    + '<span><span class="cal-legend-dot" style="background:' + (isLate ? '#ef4444' : '#22c55e') + ';"></span>Realizado (' + Math.round(avgProgress) + '%)</span>'
+    + '</div>' + svg;
+}
+
+function openProjectModal() {
+  editingProjectId = null;
+  document.getElementById('projectModalTitle').textContent = 'Novo Projeto';
+  document.getElementById('inputName').value = '';
+  document.getElementById('inputDesc').value = '';
+  document.getElementById('inputBudget').value = '';
+  document.getElementById('inputSpent').value = '';
+  document.getElementById('inputStatus').value = 'active';
+  document.getElementById('inputResponsible').value = '';
+  document.getElementById('inputStartDate').value = '';
+  document.getElementById('inputDeadline').value = '';
+  document.getElementById('projectFinanceFields').classList.toggle('hidden', !canSeeFinanceUI());
+  document.getElementById('projectMasterSheet').value = '';
+  document.getElementById('projectModal').style.display = 'flex';
+}
+
+function editProject(id) {
+  const p = cachedProjects.find(x => x.id === id);
+  if (!p) return;
+  editingProjectId = id;
+  document.getElementById('projectModalTitle').textContent = 'Editar Projeto';
+  document.getElementById('inputName').value = p.name || '';
+  document.getElementById('inputDesc').value = p.description || '';
+  document.getElementById('inputBudget').value = p.budget || '';
+  document.getElementById('inputSpent').value = p.spent || '';
+  document.getElementById('inputStatus').value = p.status || 'active';
+  document.getElementById('inputResponsible').value = p.responsible || '';
+  document.getElementById('inputStartDate').value = p.startDate ? p.startDate.substring(0, 10) : '';
+  document.getElementById('inputDeadline').value = p.deadline ? p.deadline.substring(0, 10) : '';
+  document.getElementById('projectFinanceFields').classList.toggle('hidden', !canSeeFinanceUI());
+  document.getElementById('projectModal').style.display = 'flex';
+}
+
+async function saveProject() {
+  const name = document.getElementById('inputName').value;
+  const description = document.getElementById('inputDesc').value;
+  const budget = parseFloat(document.getElementById('inputBudget').value) || 0;
+  const spent = parseFloat(document.getElementById('inputSpent').value) || 0;
+  const status = document.getElementById('inputStatus').value;
+  const responsible = document.getElementById('inputResponsible').value;
+  const startDate = document.getElementById('inputStartDate').value;
+  const deadline = document.getElementById('inputDeadline').value;
+  const error = document.getElementById('projectError');
+  if (!name) { error.textContent = 'Nome do projeto e obrigatorio'; error.style.display = 'block'; return; }
+  error.style.display = 'none';
+  const body = { name, description, budget, spent, status, responsible, startDate: startDate || undefined, deadline: deadline || undefined };
+  try {
+    const url = editingProjectId ? API + '/api/v1/projects/' + editingProjectId : API + '/api/v1/projects';
+    const method = editingProjectId ? 'PUT' : 'POST';
+    const res = await fetch(url, { method, headers: apiHeaders(), body: JSON.stringify(body) });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Erro ao salvar'); }
+    const savedProject = await res.json();
+    const masterFile = document.getElementById('projectMasterSheet').files[0];
+    closeModal('projectModal');
+    if (masterFile) {
+      const result = await processMasterSpreadsheet(savedProject.id, masterFile);
+      if (result.error) {
+        alert('Projeto salvo, mas houve erro ao ler a planilha: ' + result.error);
+      } else {
+        let msg = 'Projeto salvo. Planilha distribuida automaticamente: ' + result.tasksCreated + ' tarefa(s), ' + result.expensesCreated + ' despesa(s), ' + result.risksCreated + ' risco(s)/pendencia(s).';
+        if (result.unrecognized.length) msg += ' Abas nao reconhecidas (ignoradas): ' + result.unrecognized.join(', ') + '.';
+        alert(msg);
+      }
+    }
+    loadProjetosView();
+  } catch (e) { error.textContent = e.message; error.style.display = 'block'; }
+}
+
+async function deleteProject(id) {
+  if (!confirm('Tem certeza que deseja excluir este projeto? Todas as tarefas, alertas, mensagens e movimentacoes vinculadas serao removidas.')) return;
+  try {
+    await fetch(API + '/api/v1/projects/' + id, { method: 'DELETE', headers: apiHeaders() });
+    loadProjetosView();
+  } catch (e) { alert('Erro ao excluir projeto'); }
+}
+
+function excelDateToISO(v) {
+  if (v === undefined || v === null || v === '') return undefined;
+  if (typeof v === 'number') {
+    const d = XLSX.SSF.parse_date_code(v);
+    return d ? (d.y + '-' + String(d.m).padStart(2, '0') + '-' + String(d.d).padStart(2, '0')) : undefined;
+  }
+  if (v instanceof Date) return v.toISOString().substring(0, 10);
+  const str = String(v).trim();
+  let m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (m) return m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
+  m = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (m) return m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0');
+  const d = new Date(str);
+  return isNaN(d) ? undefined : d.toISOString().substring(0, 10);
+}
+
+function parseNumberBR(v) {
+  if (v === undefined || v === null || v === '') return 0;
+  if (typeof v === 'number') return v;
+  let s = String(v).replace(/[^\d,.\-]/g, '');
+  if (s.indexOf(',') > -1 && s.indexOf('.') === -1) s = s.replace(',', '.');
+  else if (s.indexOf(',') > -1 && s.indexOf('.') > -1) s = s.replace(/\./g, '').replace(',', '.');
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+
+function normKey(s) {
+  return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+const PROJECT_FIELDS = [
+  { key: 'name', label: 'Nome do Projeto', required: true, synonyms: ['name', 'nome', 'projeto', 'project', 'obra', 'titulo', 'title', 'nomeprojeto', 'projectname'] },
+  { key: 'description', label: 'Descricao', synonyms: ['description', 'descricao', 'desc', 'obs', 'observacao', 'detalhes'] },
+  { key: 'budget', label: 'Orcamento', synonyms: ['budget', 'orcamento', 'valorprevisto', 'valortotal', 'valor', 'custoprevisto', 'custoorcado'] },
+  { key: 'spent', label: 'Gasto Atual', synonyms: ['spent', 'gasto', 'gastoatual', 'custoreal', 'valorgasto', 'custoexecutado', 'realizado'] },
+  { key: 'status', label: 'Status', synonyms: ['status', 'situacao', 'estado'] },
+  { key: 'responsible', label: 'Responsavel', synonyms: ['responsible', 'responsavel', 'encarregado', 'gestor', 'gerente'] },
+  { key: 'startDate', label: 'Data de Inicio', synonyms: ['startdate', 'datainicio', 'inicio', 'datadeinicio', 'start'] },
+  { key: 'deadline', label: 'Prazo', synonyms: ['deadline', 'prazo', 'datafinal', 'termino', 'fim', 'dataentrega', 'entrega'] }
+];
+
+const TASK_FIELDS = [
+  { key: 'title', label: 'Titulo da Tarefa', required: true, synonyms: ['title', 'titulo', 'tarefa', 'task', 'atividade', 'servico'] },
+  { key: 'project', label: 'Projeto (nome)', required: true, synonyms: ['project', 'projeto', 'obra', 'projectname', 'nomeprojeto'] },
+  { key: 'description', label: 'Descricao', synonyms: ['description', 'descricao', 'desc', 'detalhes'] },
+  { key: 'status', label: 'Status', synonyms: ['status', 'situacao', 'estado'] },
+  { key: 'priority', label: 'Prioridade', synonyms: ['priority', 'prioridade'] },
+  { key: 'responsible', label: 'Responsavel', synonyms: ['responsible', 'responsavel', 'encarregado'] },
+  { key: 'startDate', label: 'Data de Inicio', synonyms: ['startdate', 'datainicio', 'inicio', 'start'] },
+  { key: 'deadline', label: 'Prazo', synonyms: ['deadline', 'prazo', 'datafinal', 'termino', 'fim', 'entrega'] },
+  { key: 'progress', label: 'Avanco Fisico (%)', synonyms: ['progress', 'avanco', 'percentual', 'percentualconcluido', 'conclusao'] },
+  { key: 'hoursLogged', label: 'Horas Trabalhadas', synonyms: ['hours', 'horas', 'horastrabalhadas', 'hh'] }
+];
+
+function autoMatchColumns(headers, fieldDefs) {
+  const normHeaders = headers.map(h => ({ raw: h, norm: normKey(h) }));
+  const mapping = {};
+  const used = new Set();
+  fieldDefs.forEach(f => {
+    let found = normHeaders.find(h => !used.has(h.raw) && f.synonyms.some(s => h.norm === s));
+    if (!found) found = normHeaders.find(h => !used.has(h.raw) && f.synonyms.some(s => h.norm.indexOf(s) > -1 || s.indexOf(h.norm) > -1));
+    if (found) { mapping[f.key] = found.raw; used.add(found.raw); }
+  });
+  return mapping;
+}
+
+const EXPENSE_FIELDS = [
+  { key: 'description', label: 'Descricao', required: true, synonyms: ['description', 'descricao', 'desc', 'item', 'servico'] },
+  { key: 'category', label: 'Categoria', synonyms: ['category', 'categoria', 'tipo'] },
+  { key: 'amount', label: 'Valor', required: true, synonyms: ['amount', 'valor', 'custo', 'preco', 'total'] },
+  { key: 'date', label: 'Data', synonyms: ['date', 'data'] },
+  { key: 'responsible', label: 'Responsavel', synonyms: ['responsible', 'responsavel', 'encarregado'] }
+];
+
+const RISK_FIELDS = [
+  { key: 'title', label: 'Titulo', required: true, synonyms: ['title', 'titulo', 'risco', 'pendencia', 'item'] },
+  { key: 'type', label: 'Tipo', synonyms: ['type', 'tipo'] },
+  { key: 'description', label: 'Descricao', synonyms: ['description', 'descricao', 'desc'] },
+  { key: 'probability', label: 'Probabilidade', synonyms: ['probability', 'probabilidade'] },
+  { key: 'impact', label: 'Impacto', synonyms: ['impact', 'impacto'] },
+  { key: 'status', label: 'Status', synonyms: ['status', 'situacao'] }
+];
+
+function detectSheetTarget(sheetName, headers) {
+  const n = normKey(sheetName);
+  if (['tarefas', 'tasks', 'atividades', 'servicos', 'cronograma'].some(s => n.indexOf(s) > -1)) return 'tasks';
+  if (['despesas', 'expenses', 'custos', 'gastos', 'financeiro'].some(s => n.indexOf(s) > -1)) return 'expenses';
+  if (['riscos', 'risks', 'pendencias'].some(s => n.indexOf(s) > -1)) return 'risks';
+  const normHeaders = headers.map(normKey);
+  if (normHeaders.some(h => ['titulo', 'title', 'tarefa', 'atividade'].includes(h)) && normHeaders.some(h => ['status', 'prioridade', 'priority'].includes(h))) return 'tasks';
+  if (normHeaders.some(h => ['valor', 'amount', 'custo'].includes(h))) return 'expenses';
+  if (normHeaders.some(h => ['probabilidade', 'impacto', 'impact', 'probability'].includes(h))) return 'risks';
+  return null;
+}
+
+function transformRowsGeneric(rows, fieldDefs) {
+  const headers = Object.keys(rows[0] || {});
+  const mapping = autoMatchColumns(headers, fieldDefs);
+  return rows.map(r => {
+    const obj = {};
+    fieldDefs.forEach(f => {
+      const col = mapping[f.key];
+      if (!col) return;
+      let val = r[col];
+      if (val === undefined || val === null || val === '') return;
+      if (f.key === 'amount' || f.key === 'progress' || f.key === 'hoursLogged') val = parseNumberBR(val);
+      if (f.key === 'date' || f.key === 'startDate' || f.key === 'deadline') val = excelDateToISO(val);
+      obj[f.key] = val;
+    });
+    return obj;
+  });
+}
+
+async function processMasterSpreadsheet(projectId, file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array' });
+        let tasksCreated = 0, expensesCreated = 0, risksCreated = 0;
+        const unrecognized = [];
+        for (const sheetName of wb.SheetNames) {
+          const sheet = wb.Sheets[sheetName];
+          const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+          if (!rows.length) continue;
+          const headers = Object.keys(rows[0]);
+          const target = detectSheetTarget(sheetName, headers);
+          if (target === 'tasks') {
+            const normalized = transformRowsGeneric(rows, TASK_FIELDS).filter(o => o.title).map(o => ({ ...o, projectId }));
+            const res = await fetch(API + '/api/v1/tasks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: normalized }) });
+            const d = await res.json();
+            tasksCreated += d.created || 0;
+          } else if (target === 'expenses') {
+            const normalized = transformRowsGeneric(rows, EXPENSE_FIELDS).filter(o => o.description && o.amount).map(o => ({ ...o, projectId }));
+            const res = await fetch(API + '/api/v1/expenses/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: normalized }) });
+            const d = await res.json();
+            expensesCreated += d.created || 0;
+          } else if (target === 'risks') {
+            const normalized = transformRowsGeneric(rows, RISK_FIELDS).filter(o => o.title).map(o => ({ ...o, projectId }));
+            const res = await fetch(API + '/api/v1/risks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: normalized }) });
+            const d = await res.json();
+            risksCreated += d.created || 0;
+          } else {
+            unrecognized.push(sheetName);
+          }
+        }
+        resolve({ tasksCreated, expensesCreated, risksCreated, unrecognized });
+      } catch (err) { resolve({ error: err.message }); }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+let importContext = { target: null, headers: [], rows: [], fieldDefs: [] };
+
+function openImportMapping(target, headers, rows) {
+  importContext = { target, headers, rows, fieldDefs: target === 'projects' ? PROJECT_FIELDS : TASK_FIELDS };
+  const mapping = autoMatchColumns(headers, importContext.fieldDefs);
+  document.getElementById('importMappingTitle').textContent = target === 'projects' ? 'Confirmar importacao de Projetos (' + rows.length + ' linhas)' : 'Confirmar importacao de Tarefas (' + rows.length + ' linhas)';
+  const container = document.getElementById('importMappingFields');
+  container.innerHTML = importContext.fieldDefs.map(f => {
+    const options = ['<option value="">(Nao importar)</option>'].concat(headers.map(h => '<option value="' + h + '"' + (mapping[f.key] === h ? ' selected' : '') + '>' + h + '</option>')).join('');
+    return '<label class="field">' + f.label + (f.required ? ' *' : '') + '</label><select class="input" data-fieldkey="' + f.key + '">' + options + '</select>';
+  }).join('');
+  document.getElementById('importMappingError').style.display = 'none';
+  document.getElementById('importMappingModal').style.display = 'flex';
+}
+
+function confirmImportMapping() {
+  const selects = document.querySelectorAll('#importMappingFields select');
+  const mapping = {};
+  selects.forEach(s => { if (s.value) mapping[s.dataset.fieldkey] = s.value; });
+  const requiredMissing = importContext.fieldDefs.filter(f => f.required && !mapping[f.key]);
+  const error = document.getElementById('importMappingError');
+  if (requiredMissing.length) { error.textContent = 'Selecione a coluna para: ' + requiredMissing.map(f => f.label).join(', '); error.style.display = 'block'; return; }
+  error.style.display = 'none';
+
+  const normalizedRows = importContext.rows.map(r => {
+    const obj = {};
+    importContext.fieldDefs.forEach(f => {
+      const col = mapping[f.key];
+      if (!col) return;
+      let val = r[col];
+      if (val === undefined || val === null || val === '') return;
+      if (f.key === 'budget' || f.key === 'spent' || f.key === 'progress' || f.key === 'hoursLogged') val = parseNumberBR(val);
+      if (f.key === 'startDate' || f.key === 'deadline') val = excelDateToISO(val);
+      obj[f.key] = val;
+    });
+    return obj;
+  });
+
+  closeModal('importMappingModal');
+  if (importContext.target === 'projects') doImportProjects(normalizedRows);
+  else doImportTasks(normalizedRows);
+}
+
+function importProjects(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      if (!rows.length) { alert('Planilha vazia ou sem dados legiveis.'); input.value = ''; return; }
+      const headers = Object.keys(rows[0]);
+      openImportMapping('projects', headers, rows);
+    } catch (err) { alert('Erro ao ler planilha: ' + err.message); }
+    input.value = '';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+async function doImportProjects(rows) {
+  try {
+    const res = await fetch(API + '/api/v1/projects/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows }) });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || 'Erro ao importar');
+    alert(d.created + ' projeto(s) importado(s) com sucesso.');
+    loadProjetosView();
+  } catch (err) { alert('Erro ao importar: ' + err.message); }
+}
+
+async function exportProjects() {
+  const res = await fetch(API + '/api/v1/projects', { headers: apiHeaders() });
+  const projects = await res.json();
+  const rows = projects.map(p => ({ Nome: p.name, Descricao: p.description || '', Status: p.status, Orcamento: p.budget, Gasto: p.spent, Responsavel: p.responsible || '', Prazo: p.deadline ? p.deadline.substring(0, 10) : '' }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Projetos');
+  XLSX.writeFile(wb, 'projetos_constructflow.xlsx');
+}
+
+// ============ TAREFAS - KANBAN ============
+async function loadKanban() {
+  try {
+    const [taskRes, projRes] = await Promise.all([
+      fetch(API + '/api/v1/tasks', { headers: apiHeaders() }),
+      fetch(API + '/api/v1/projects', { headers: apiHeaders() })
+    ]);
+    const allTasks = await taskRes.json();
+    cachedProjects = await projRes.json();
+    window._cachedTasks = allTasks;
+
+    const searchRaw = (document.getElementById('taskSearchInput') || {}).value || '';
+    const search = normKey(searchRaw);
+
+    let tasksToShow;
+    if (search) {
+      tasksToShow = allTasks.filter(t => normKey(t.title).indexOf(search) > -1);
+    } else {
+      const childCount = {};
+      allTasks.forEach(t => { if (t.parentId) childCount[t.parentId] = (childCount[t.parentId] || 0) + 1; });
+      tasksToShow = allTasks.filter(t => !t.parentId).map(t => ({ ...t, _childCount: childCount[t.id] || 0 }));
+    }
+
+    renderKanbanColumn('pending', 'kanbanPending', 'countPending', tasksToShow);
+    renderKanbanColumn('in_progress', 'kanbanInProgress', 'countInProgress', tasksToShow);
+    renderKanbanColumn('done', 'kanbanDone', 'countDone', tasksToShow);
+  } catch (e) { console.error(e); }
+}
+
+function renderKanbanColumn(status, containerId, countId, tasks) {
+  const filtered = tasks.filter(t => t.status === status);
+  document.getElementById(countId).textContent = '(' + filtered.length + ')';
+  const c = document.getElementById(containerId);
+  if (!filtered.length) { c.innerHTML = ''; return; }
+  c.innerHTML = filtered.map(t => {
+    const prioLabel = { low: 'Baixa', medium: 'Media', high: 'Alta' }[t.priority] || t.priority;
+    const childBadge = t._childCount ? '<span class="deviation-badge" style="background:#dbeafe;color:#1e40af;">' + t._childCount + ' subitens</span>' : '';
+    return '<div class="kanban-card" draggable="true" ondragstart="onKanbanDragStart(event, \'' + t.id + '\')" onclick="editTask(\'' + t.id + '\')">'
+      + '<div class="kc-title">' + (t.isMilestone ? '⭐ ' : '') + t.title + childBadge + '</div>'
+      + '<div class="kc-meta">' + (t.project ? t.project.name : '') + ' &middot; ' + prioLabel + (t.assignee ? ' &middot; ' + t.assignee.name : '') + (t.deadline ? ' &middot; ' + fmtDate(t.deadline) : '') + (canSeeFinanceUI() && t.cost ? ' &middot; ' + fmtMoney(t.cost) : '') + '</div>'
+      + '<div class="cost-track" style="margin-top:6px;height:6px;"><div class="cost-fill cost-fill-blue" style="width:' + (t.progress || 0) + '%"></div></div>'
+      + '</div>';
+  }).join('');
+}
+
+function onKanbanDragStart(ev, taskId) {
+  draggedTaskId = taskId;
+  ev.dataTransfer.effectAllowed = 'move';
+}
+
+async function onKanbanDrop(ev, newStatus) {
+  ev.preventDefault();
+  document.querySelectorAll('.kanban-col').forEach(el => el.classList.remove('dragover'));
+  if (!draggedTaskId) return;
+  try {
+    await fetch(API + '/api/v1/tasks/' + draggedTaskId, { method: 'PUT', headers: apiHeaders(), body: JSON.stringify({ status: newStatus }) });
+    draggedTaskId = null;
+    loadKanban();
+  } catch (e) { alert('Erro ao mover tarefa'); }
+}
+
+function fillTaskProjectSelect(selectedId) {
+  const sel = document.getElementById('taskProject');
+  sel.innerHTML = cachedProjects.map(p => '<option value="' + p.id + '"' + (p.id === selectedId ? ' selected' : '') + '>' + p.name + '</option>').join('');
+}
+
+async function openTaskModal() {
+  editingTaskId = null;
+  document.getElementById('taskModalTitle').textContent = 'Nova Tarefa';
+  document.getElementById('taskTitle').value = '';
+  document.getElementById('taskDesc').value = '';
+  fillTaskProjectSelect(null);
+  fillTaskParentSelect(null, null);
+  await loadUsersCache();
+  fillTaskAssigneeSelect(null);
+  document.getElementById('taskStatus').value = 'pending';
+  document.getElementById('taskPriority').value = 'medium';
+  document.getElementById('taskStartDate').value = '';
+  document.getElementById('taskDeadline').value = '';
+  document.getElementById('taskProgress').value = 0;
+  document.getElementById('taskHours').value = 0;
+  document.getElementById('taskCost').value = 0;
+  document.getElementById('taskCostField').classList.toggle('hidden', !canSeeFinanceUI());
+  document.getElementById('taskMilestone').checked = false;
+  document.getElementById('taskChildrenWrap').classList.add('hidden');
+  document.getElementById('taskModal').style.display = 'flex';
+}
+
+function fillTaskParentSelect(projectId, selectedId) {
+  const sel = document.getElementById('taskParent');
+  const options = (window._cachedTasks || []).filter(t => (!projectId || t.projectId === projectId) && t.id !== editingTaskId);
+  sel.innerHTML = '<option value="">Nenhuma (tarefa de topo)</option>' + options.map(t => '<option value="' + t.id + '"' + (t.id === selectedId ? ' selected' : '') + '>' + t.title + '</option>').join('');
+}
+
+async function editTask(id) {
+  const t = (window._cachedTasks || []).find(x => x.id === id);
+  if (!t) return;
+  editingTaskId = id;
+  document.getElementById('taskModalTitle').textContent = 'Editar Tarefa';
+  document.getElementById('taskTitle').value = t.title || '';
+  document.getElementById('taskDesc').value = t.description || '';
+  fillTaskProjectSelect(t.projectId);
+  fillTaskParentSelect(t.projectId, t.parentId);
+  await loadUsersCache();
+  fillTaskAssigneeSelect(t.assigneeId);
+  document.getElementById('taskStatus').value = t.status || 'pending';
+  document.getElementById('taskPriority').value = t.priority || 'medium';
+  document.getElementById('taskStartDate').value = t.startDate ? t.startDate.substring(0, 10) : '';
+  document.getElementById('taskDeadline').value = t.deadline ? t.deadline.substring(0, 10) : '';
+  document.getElementById('taskProgress').value = t.progress || 0;
+  document.getElementById('taskHours').value = t.hoursLogged || 0;
+  document.getElementById('taskCost').value = t.cost || 0;
+  document.getElementById('taskCostField').classList.toggle('hidden', !canSeeFinanceUI());
+  document.getElementById('taskMilestone').checked = !!t.isMilestone;
+
+  const children = (window._cachedTasks || []).filter(x => x.parentId === t.id);
+  const childrenWrap = document.getElementById('taskChildrenWrap');
+  if (children.length) {
+    childrenWrap.classList.remove('hidden');
+    document.getElementById('taskChildrenList').innerHTML = children.map(ch => {
+      const statusLabel = { pending: 'Pendente', in_progress: 'Em andamento', done: 'Concluida' }[ch.status] || ch.status;
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">'
+        + '<span>' + ch.title + ' <span style="color:#6b7280;">(' + statusLabel + ')</span></span>'
+        + '<a style="color:#4f46e5;cursor:pointer;" onclick="editTask(\'' + ch.id + '\')">Abrir</a>'
+        + '</div>';
+    }).join('');
+  } else {
+    childrenWrap.classList.add('hidden');
+  }
+  document.getElementById('taskModal').style.display = 'flex';
+}
+
+async function saveTask() {
+  const title = document.getElementById('taskTitle').value;
+  const description = document.getElementById('taskDesc').value;
+  const projectId = document.getElementById('taskProject').value;
+  const status = document.getElementById('taskStatus').value;
+  const priority = document.getElementById('taskPriority').value;
+  const assigneeId = document.getElementById('taskAssignee').value;
+  const parentId = document.getElementById('taskParent').value;
+  const startDate = document.getElementById('taskStartDate').value;
+  const deadline = document.getElementById('taskDeadline').value;
+  const progress = document.getElementById('taskProgress').value;
+  const hoursLogged = document.getElementById('taskHours').value;
+  const cost = canSeeFinanceUI() ? document.getElementById('taskCost').value : undefined;
+  const isMilestone = document.getElementById('taskMilestone').checked;
+  const error = document.getElementById('taskError');
+  if (!title) { error.textContent = 'Titulo e obrigatorio'; error.style.display = 'block'; return; }
+  if (!projectId) { error.textContent = 'Selecione um projeto'; error.style.display = 'block'; return; }
+  error.style.display = 'none';
+  const body = { title, description, status, priority, assigneeId: assigneeId || null, parentId: parentId || null, startDate: startDate || undefined, deadline: deadline || undefined, progress, hoursLogged, cost, isMilestone };
+  if (!editingTaskId) body.projectId = projectId;
+  try {
+    const url = editingTaskId ? API + '/api/v1/tasks/' + editingTaskId : API + '/api/v1/tasks';
+    const method = editingTaskId ? 'PUT' : 'POST';
+    const res = await fetch(url, { method, headers: apiHeaders(), body: JSON.stringify(body) });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Erro ao salvar'); }
+    closeModal('taskModal');
+    loadKanban();
+  } catch (e) { error.textContent = e.message; error.style.display = 'block'; }
+}
+
+function importTasks(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      if (!rows.length) { alert('Planilha vazia ou sem dados legiveis.'); input.value = ''; return; }
+      const headers = Object.keys(rows[0]);
+      openImportMapping('tasks', headers, rows);
+    } catch (err) { alert('Erro ao ler planilha: ' + err.message); }
+    input.value = '';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+async function doImportTasks(rows) {
+  try {
+    const res = await fetch(API + '/api/v1/tasks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows }) });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || 'Erro ao importar');
+    alert(d.created + ' tarefa(s) importada(s). ' + (d.skipped ? d.skipped + ' ignorada(s) por falta de titulo ou projeto valido.' : ''));
+    loadKanban();
+  } catch (err) { alert('Erro ao importar: ' + err.message); }
+}
+
+async function exportTasks() {
+  const res = await fetch(API + '/api/v1/tasks', { headers: apiHeaders() });
+  const tasks = await res.json();
+  const rows = tasks.map(t => ({ Titulo: t.title, Projeto: t.project ? t.project.name : '', Descricao: t.description || '', Status: t.status, Prioridade: t.priority, Responsavel: t.assignee ? t.assignee.name : '', Prazo: t.deadline ? t.deadline.substring(0, 10) : '' }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Tarefas');
+  XLSX.writeFile(wb, 'tarefas_constructflow.xlsx');
+}
+
+function renderInsightPanel(containerId, insights) {
+  const c = document.getElementById(containerId);
+  const hasAny = insights.critical.length || insights.improvement.length || insights.positive.length;
+  if (!hasAny) { c.innerHTML = ''; return; }
+  let html = '<div class="card" style="margin-bottom:16px;"><h3>Pontos de Atencao</h3>';
+  if (insights.critical.length) html += '<div class="insight-section"><div class="insight-title-critical">🔴 Pontos Criticos</div>' + insights.critical.map(t => '<div class="insight-item">- ' + t + '</div>').join('') + '</div>';
+  if (insights.improvement.length) html += '<div class="insight-section"><div class="insight-title-improvement">🟠 Pontos de Melhoria</div>' + insights.improvement.map(t => '<div class="insight-item">- ' + t + '</div>').join('') + '</div>';
+  if (insights.positive.length) html += '<div class="insight-section"><div class="insight-title-positive">🟢 Pontos Positivos</div>' + insights.positive.map(t => '<div class="insight-item">- ' + t + '</div>').join('') + '</div>';
+  html += '</div>';
+  c.innerHTML = html;
+}
+
+function generateSuprimentosInsights(materials) {
+  const critical = [], improvement = [], positive = [];
+  materials.forEach(m => {
+    if (m.desvio) critical.push('Desvio em ' + m.name + ': saiu ' + m.saidas + ' ' + m.unit + ' contra ' + m.entradas + ' ' + m.unit + ' de entrada.');
+    else if (m.saldo > 0 && m.entradas > 0 && (m.saldo / m.entradas) < 0.1) improvement.push('Estoque baixo de ' + m.name + ': restam apenas ' + m.saldo + ' ' + m.unit + '.');
+    else if (m.saldo > 0) positive.push(m.name + ' com estoque saudavel (' + m.saldo + ' ' + m.unit + ' disponivel).');
+  });
+  return { critical, improvement, positive };
+}
+
+function generateDespesasInsights(expenses, projects) {
+  const critical = [], improvement = [], positive = [];
+  projects.forEach(p => {
+    if (p.budget === null || p.budget === undefined) return;
+    const projExpenses = expenses.filter(e => e.projectId === p.id).reduce((s, e) => s + e.amount, 0);
+    const totalGasto = (p.spent || 0) + projExpenses;
+    if (p.budget > 0) {
+      const pct = totalGasto / p.budget;
+      if (pct > 1) critical.push('Projeto ' + p.name + ' ultrapassou o orcamento (' + Math.round(pct * 100) + '% utilizado).');
+      else if (pct > 0.85) improvement.push('Projeto ' + p.name + ' esta proximo do limite do orcamento (' + Math.round(pct * 100) + '%).');
+      else positive.push('Projeto ' + p.name + ' dentro do orcamento (' + Math.round(pct * 100) + '% utilizado).');
+    }
+  });
+  const catTotals = {};
+  expenses.forEach(e => { const cat = e.category || 'Sem categoria'; catTotals[cat] = (catTotals[cat] || 0) + e.amount; });
+  const totalAll = expenses.reduce((s, e) => s + e.amount, 0);
+  Object.entries(catTotals).forEach(([cat, val]) => {
+    if (totalAll > 0 && (val / totalAll) > 0.5) improvement.push('Categoria "' + cat + '" concentra ' + Math.round(val / totalAll * 100) + '% das despesas - vale revisar.');
+  });
+  return { critical, improvement, positive };
+}
+
+function generateRiscosInsights(risks) {
+  const critical = [], improvement = [], positive = [];
+  risks.forEach(r => {
+    const label = r.type === 'risco' ? 'Risco' : 'Pendencia';
+    if (r.status !== 'encerrado') {
+      if (r.impact === 'alto') critical.push(label + ' de alto impacto em aberto: ' + r.title + (r.project ? ' (' + r.project.name + ')' : '') + '.');
+      else if (r.impact === 'medio') improvement.push(label + ' de impacto medio em aberto: ' + r.title + '.');
+    } else {
+      positive.push(label + ' encerrado: ' + r.title + '.');
+    }
+  });
+  return { critical, improvement, positive };
+}
+
+const BOQ_HEADER_KEYWORDS = {
+  item: ['item'],
+  descricao: ['descricao', 'servico', 'discriminacao'],
+  quantidade: ['qtde', 'qtd', 'quantidade', 'quant'],
+  unidade: ['und', 'unid', 'unidade'],
+  valorunit: ['valorunit', 'valorunitario', 'precounit', 'precounitario'],
+  valortotal: ['valortotal', 'total', 'valor']
+};
+
+function boqFindHeaderRow(aoa) {
+  let bestRow = -1, bestScore = 0, bestCols = null;
+  const limit = Math.min(aoa.length, 15);
+  for (let i = 0; i < limit; i++) {
+    const row = aoa[i];
+    if (!row) continue;
+    const cols = {};
+    let score = 0;
+    row.forEach((cell, colIdx) => {
+      const n = normKey(cell);
+      if (!n) return;
+      Object.entries(BOQ_HEADER_KEYWORDS).forEach(([field, keywords]) => {
+        if (cols[field] !== undefined) return;
+        if (keywords.some(k => n === k || n.indexOf(k) > -1)) { cols[field] = colIdx; score++; }
+      });
+    });
+    if (score > bestScore) { bestScore = score; bestRow = i; bestCols = cols; }
+  }
+  if (bestScore < 2) return null;
+  return { rowIndex: bestRow, cols: bestCols };
+}
+
+function boqParseSheetGrouped(sheetName, aoa) {
+  const header = boqFindHeaderRow(aoa);
+  if (!header) return { groups: [], recognized: false };
+  const { rowIndex, cols } = header;
+  if (cols.descricao === undefined) return { groups: [], recognized: true };
+
+  const groups = [];
+  let currentGroup = { title: 'Servicos - ' + sheetName, items: [] };
+  groups.push(currentGroup);
+
+  for (let i = rowIndex + 1; i < aoa.length; i++) {
+    const row = aoa[i];
+    if (!row) continue;
+    const descRaw = row[cols.descricao];
+    const desc = (descRaw === undefined || descRaw === null) ? '' : String(descRaw).trim();
+    if (!desc) continue;
+    const upper = desc.toUpperCase();
+    if (upper.indexOf('SUB-TOTAL') > -1 || upper.indexOf('SUBTOTAL') > -1 || upper.indexOf('TOTAL GERAL') > -1) continue;
+
+    const qty = cols.quantidade !== undefined ? parseNumberBR(row[cols.quantidade]) : 0;
+    const unitValue = cols.valorunit !== undefined ? parseNumberBR(row[cols.valorunit]) : 0;
+    let totalValue = cols.valortotal !== undefined ? parseNumberBR(row[cols.valortotal]) : 0;
+    if (!totalValue && unitValue && qty) totalValue = unitValue * qty;
+    const hasRealData = qty > 0 || unitValue > 0 || totalValue > 0;
+
+    const itemCode = (cols.item !== undefined && row[cols.item] !== undefined && row[cols.item] !== null) ? String(row[cols.item]).trim() : '';
+
+    if (!hasRealData) {
+      if (/^\d+$/.test(itemCode)) {
+        currentGroup = { title: desc.substring(0, 150), items: [] };
+        groups.push(currentGroup);
+      }
+      continue;
+    }
+
+    currentGroup.items.push({
+      title: desc.substring(0, 150),
+      description: '[' + sheetName + ']' + (qty ? ' Qtde: ' + qty + (cols.unidade !== undefined && row[cols.unidade] ? ' ' + String(row[cols.unidade]).trim() : '') : ''),
+      cost: Math.round(totalValue * 100) / 100
+    });
+  }
+
+  return { groups: groups.filter(g => g.items.length), recognized: true };
+}
+
+let boqParsedGroups = [];
+
+function importBoq(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      let allGroups = [];
+      let sheetsRecognized = 0, sheetsSkipped = [];
+      wb.SheetNames.forEach(name => {
+        const sheet = wb.Sheets[name];
+        const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+        const result = boqParseSheetGrouped(name, aoa);
+        if (result.recognized && result.groups.length) { sheetsRecognized++; allGroups = allGroups.concat(result.groups); }
+        else if (!result.recognized) sheetsSkipped.push(name);
+      });
+      boqParsedGroups = allGroups;
+      const totalItems = allGroups.reduce((s, g) => s + g.items.length, 0);
+      const totalCost = allGroups.reduce((s, g) => s + g.items.reduce((s2, i) => s2 + i.cost, 0), 0);
+      document.getElementById('boqProjectSelect').innerHTML = cachedProjects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+      const summary = document.getElementById('boqSummary');
+      summary.innerHTML = '<div class="card" style="margin-top:12px;background:#f9fafb;">'
+        + '<p style="font-size:13px;margin-bottom:4px;"><strong>' + allGroups.length + '</strong> tarefa(s) macro (setores) serao criadas, contendo <strong>' + totalItems + '</strong> subitem(ns) de servico ao todo.</p>'
+        + '<p style="font-size:13px;margin-bottom:4px;">Vindas de <strong>' + sheetsRecognized + '</strong> de ' + wb.SheetNames.length + ' aba(s).</p>'
+        + '<p style="font-size:13px;margin-bottom:4px;">Custo total somado: <strong>' + fmtMoney(totalCost) + '</strong></p>'
+        + (sheetsSkipped.length ? '<p style="font-size:12px;color:#9a3412;">Abas nao reconhecidas (ignoradas): ' + sheetsSkipped.join(', ') + '</p>' : '')
+        + '</div>';
+      document.getElementById('boqConfirmBtn').style.display = totalItems ? 'inline-block' : 'none';
+      document.getElementById('boqError').style.display = 'none';
+      document.getElementById('boqModal').style.display = 'flex';
+    } catch (err) { alert('Erro ao ler planilha: ' + err.message); }
+    input.value = '';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+async function confirmBoqImport() {
+  const projectId = document.getElementById('boqProjectSelect').value;
+  const error = document.getElementById('boqError');
+  const confirmBtn = document.getElementById('boqConfirmBtn');
+  if (!projectId) { error.textContent = 'Selecione um projeto'; error.style.display = 'block'; return; }
+  if (!boqParsedGroups.length) { error.textContent = 'Nenhum servico para importar'; error.style.display = 'block'; return; }
+  error.style.display = 'none';
+  confirmBtn.textContent = 'Importando, aguarde...';
+  confirmBtn.disabled = true;
+  try {
+    let groupsCreated = 0, itemsCreated = 0;
+    const childRows = [];
+    for (const group of boqParsedGroups) {
+      const groupCost = group.items.reduce((s, i) => s + i.cost, 0);
+      const res = await fetch(API + '/api/v1/tasks', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ title: group.title, description: 'Grupo importado da planilha de servicos (' + group.items.length + ' subitens)', status: 'pending', priority: 'medium', cost: groupCost, projectId }) });
+      const createdGroup = await res.json();
+      if (!res.ok) continue;
+      groupsCreated++;
+      group.items.forEach(item => childRows.push({ ...item, projectId, parentId: createdGroup.id }));
+    }
+    if (childRows.length) {
+      const res2 = await fetch(API + '/api/v1/tasks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: childRows }) });
+      const d2 = await res2.json();
+      itemsCreated = d2.created || 0;
+    }
+    closeModal('boqModal');
+    alert(groupsCreated + ' tarefa(s) macro criada(s), com ' + itemsCreated + ' subitem(ns) de servico dentro delas.');
+    loadKanban();
+  } catch (e) { error.textContent = e.message; error.style.display = 'block'; }
+  confirmBtn.textContent = 'Importar Tarefas';
+  confirmBtn.disabled = false;
+}
+
+// ============ SUPRIMENTOS ============
+function switchSuprimentosTab(tab) {
+  document.getElementById('tabMateriais').classList.toggle('active', tab === 'materiais');
+  document.getElementById('tabMovimentacoes').classList.toggle('active', tab === 'movimentacoes');
+  document.getElementById('panelMateriais').classList.toggle('hidden', tab !== 'materiais');
+  document.getElementById('panelMovimentacoes').classList.toggle('hidden', tab !== 'movimentacoes');
+  if (tab === 'movimentacoes') loadMovimentacoesTable();
+}
+
+async function loadSuprimentosView() {
+  await loadMateriaisTable();
+  const projRes = await fetch(API + '/api/v1/projects', { headers: apiHeaders() });
+  cachedProjects = await projRes.json();
+  renderInsightPanel('suprimentosInsights', generateSuprimentosInsights(cachedMaterials));
+}
+
+async function loadMateriaisTable() {
+  const c = document.getElementById('materiaisTable');
+  try {
+    const res = await fetch(API + '/api/v1/materials', { headers: apiHeaders() });
+    const materials = await res.json();
+    cachedMaterials = materials;
+    if (!materials.length) { c.innerHTML = '<div class="loading">Nenhum material cadastrado</div>'; return; }
+    let h = '<table class="table-projects"><thead><tr><th>Material</th><th>Unidade</th><th>Entradas</th><th>Saidas</th><th>Saldo</th><th>Acoes</th></tr></thead><tbody>';
+    materials.forEach(m => {
+      h += '<tr><td><strong>' + m.name + '</strong>' + (m.desvio ? '<span class="deviation-badge">DESVIO</span>' : '') + '</td><td>' + m.unit + '</td><td>' + m.entradas + '</td><td>' + m.saidas + '</td><td>' + m.saldo + '</td>'
+        + '<td><button class="btn btn-sm btn-danger" onclick="deleteMaterial(\'' + m.id + '\')">Excluir</button></td></tr>';
+    });
+    h += '</tbody></table>';
+    c.innerHTML = h;
+  } catch (e) { c.innerHTML = '<div class="loading">Erro ao carregar materiais</div>'; }
+}
+
+async function loadMovimentacoesTable() {
+  const c = document.getElementById('movimentacoesTable');
+  try {
+    const res = await fetch(API + '/api/v1/movements', { headers: apiHeaders() });
+    const movements = await res.json();
+    if (!movements.length) { c.innerHTML = '<div class="loading">Nenhuma movimentacao registrada</div>'; return; }
+    let h = '<table class="table-projects"><thead><tr><th>Data</th><th>Material</th><th>Tipo</th><th>Quantidade</th><th>Projeto</th><th>Responsavel</th><th>Acoes</th></tr></thead><tbody>';
+    movements.forEach(m => {
+      h += '<tr><td>' + fmtDate(m.createdAt) + '</td><td>' + m.material.name + '</td><td>' + (m.type === 'entrada' ? 'Entrada' : 'Saida') + '</td><td>' + m.quantity + ' ' + m.material.unit + '</td><td>' + (m.project ? m.project.name : '-') + '</td><td>' + (m.responsible || '-') + '</td>'
+        + '<td><button class="btn btn-sm btn-danger" onclick="deleteMovement(\'' + m.id + '\')">Excluir</button></td></tr>';
+    });
+    h += '</tbody></table>';
+    c.innerHTML = h;
+  } catch (e) { c.innerHTML = '<div class="loading">Erro ao carregar movimentacoes</div>'; }
+}
+
+function openMaterialModal() {
+  document.getElementById('materialName').value = '';
+  document.getElementById('materialUnit').value = '';
+  document.getElementById('materialModal').style.display = 'flex';
+}
+
+async function saveMaterial() {
+  const name = document.getElementById('materialName').value;
+  const unit = document.getElementById('materialUnit').value;
+  const error = document.getElementById('materialError');
+  if (!name) { error.textContent = 'Nome e obrigatorio'; error.style.display = 'block'; return; }
+  error.style.display = 'none';
+  try {
+    const res = await fetch(API + '/api/v1/materials', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ name, unit: unit || 'un' }) });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+    closeModal('materialModal');
+    loadMateriaisTable();
+  } catch (e) { error.textContent = e.message; error.style.display = 'block'; }
+}
+
+async function deleteMaterial(id) {
+  if (!confirm('Excluir este material e todo o historico de movimentacoes dele?')) return;
+  await fetch(API + '/api/v1/materials/' + id, { method: 'DELETE', headers: apiHeaders() });
+  loadMateriaisTable();
+}
+
+async function openMovementModal() {
+  if (!cachedMaterials.length) {
+    const res = await fetch(API + '/api/v1/materials', { headers: apiHeaders() });
+    cachedMaterials = await res.json();
+  }
+  if (!cachedProjects.length) {
+    const res = await fetch(API + '/api/v1/projects', { headers: apiHeaders() });
+    cachedProjects = await res.json();
+  }
+  if (!cachedMaterials.length) { alert('Cadastre um material primeiro.'); return; }
+  document.getElementById('movementMaterial').innerHTML = cachedMaterials.map(m => '<option value="' + m.id + '">' + m.name + ' (' + m.unit + ')</option>').join('');
+  document.getElementById('movementProject').innerHTML = '<option value="">Nenhum</option>' + cachedProjects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+  document.getElementById('movementType').value = 'entrada';
+  document.getElementById('movementQty').value = '';
+  document.getElementById('movementValue').value = '';
+  document.getElementById('movementResponsible').value = '';
+  document.getElementById('movementNotes').value = '';
+  document.getElementById('movementModal').style.display = 'flex';
+}
+
+async function saveMovement() {
+  const materialId = document.getElementById('movementMaterial').value;
+  const type = document.getElementById('movementType').value;
+  const quantity = document.getElementById('movementQty').value;
+  const unitValue = document.getElementById('movementValue').value;
+  const projectId = document.getElementById('movementProject').value;
+  const responsible = document.getElementById('movementResponsible').value;
+  const notes = document.getElementById('movementNotes').value;
+  const error = document.getElementById('movementError');
+  if (!materialId || !quantity) { error.textContent = 'Material e quantidade sao obrigatorios'; error.style.display = 'block'; return; }
+  error.style.display = 'none';
+  try {
+    const res = await fetch(API + '/api/v1/movements', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ materialId, type, quantity, unitValue, projectId: projectId || undefined, responsible, notes }) });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+    closeModal('movementModal');
+    loadMateriaisTable();
+    if (!document.getElementById('panelMovimentacoes').classList.contains('hidden')) loadMovimentacoesTable();
+  } catch (e) { error.textContent = e.message; error.style.display = 'block'; }
+}
+
+async function deleteMovement(id) {
+  if (!confirm('Excluir esta movimentacao?')) return;
+  await fetch(API + '/api/v1/movements/' + id, { method: 'DELETE', headers: apiHeaders() });
+  loadMovimentacoesTable();
+  loadMateriaisTable();
+}
+
+// ============ DESPESAS ============
+async function loadDespesasView() {
+  if (!cachedProjects.length) {
+    const res = await fetch(API + '/api/v1/projects', { headers: apiHeaders() });
+    cachedProjects = await res.json();
+  }
+  const c = document.getElementById('despesasTable');
+  try {
+    const res = await fetch(API + '/api/v1/expenses', { headers: apiHeaders() });
+    const expenses = await res.json();
+    window._cachedExpenses = expenses;
+    renderInsightPanel('despesasInsights', generateDespesasInsights(expenses, cachedProjects));
+    if (!expenses.length) { c.innerHTML = '<div class="loading">Nenhuma despesa lancada</div>'; return; }
+    let h = '<table class="table-projects"><thead><tr><th>Data</th><th>Descricao</th><th>Categoria</th><th>Valor</th><th>Projeto</th><th>Responsavel</th><th>Acoes</th></tr></thead><tbody>';
+    expenses.forEach(e => {
+      h += '<tr><td>' + fmtDate(e.date) + '</td><td>' + e.description + '</td><td>' + (e.category || '-') + '</td><td>' + fmtMoney(e.amount) + '</td><td>' + (e.project ? e.project.name : '-') + '</td><td>' + (e.responsible || '-') + '</td>'
+        + '<td><button class="btn btn-sm btn-danger" onclick="deleteExpense(\'' + e.id + '\')">Excluir</button></td></tr>';
+    });
+    h += '</tbody></table>';
+    c.innerHTML = h;
+  } catch (e) { c.innerHTML = '<div class="loading">Erro ao carregar despesas</div>'; }
+}
+
+function openExpenseModal() {
+  document.getElementById('expenseProject').innerHTML = cachedProjects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+  document.getElementById('expenseDesc').value = '';
+  document.getElementById('expenseCategory').value = '';
+  document.getElementById('expenseAmount').value = '';
+  document.getElementById('expenseDate').value = new Date().toISOString().substring(0, 10);
+  document.getElementById('expenseResponsible').value = '';
+  document.getElementById('expenseModal').style.display = 'flex';
+}
+
+async function saveExpense() {
+  const projectId = document.getElementById('expenseProject').value;
+  const description = document.getElementById('expenseDesc').value;
+  const category = document.getElementById('expenseCategory').value;
+  const amount = document.getElementById('expenseAmount').value;
+  const date = document.getElementById('expenseDate').value;
+  const responsible = document.getElementById('expenseResponsible').value;
+  const error = document.getElementById('expenseError');
+  if (!description || !amount || !projectId) { error.textContent = 'Descricao, valor e projeto sao obrigatorios'; error.style.display = 'block'; return; }
+  error.style.display = 'none';
+  try {
+    const res = await fetch(API + '/api/v1/expenses', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ projectId, description, category, amount, date, responsible }) });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+    closeModal('expenseModal');
+    loadDespesasView();
+  } catch (e) { error.textContent = e.message; error.style.display = 'block'; }
+}
+
+async function deleteExpense(id) {
+  if (!confirm('Excluir esta despesa?')) return;
+  await fetch(API + '/api/v1/expenses/' + id, { method: 'DELETE', headers: apiHeaders() });
+  loadDespesasView();
+}
+
+// ============ RISCOS E PENDENCIAS ============
+async function loadRiscosView() {
+  if (!cachedProjects.length) {
+    const res = await fetch(API + '/api/v1/projects', { headers: apiHeaders() });
+    cachedProjects = await res.json();
+  }
+  const c = document.getElementById('riscosTable');
+  try {
+    const res = await fetch(API + '/api/v1/risks', { headers: apiHeaders() });
+    const risks = await res.json();
+    renderInsightPanel('riscosInsights', generateRiscosInsights(risks));
+    if (!risks.length) { c.innerHTML = '<div class="loading">Nenhum risco ou pendencia registrado</div>'; return; }
+    let h = '<table class="table-projects"><thead><tr><th>Tipo</th><th>Titulo</th><th>Projeto</th><th>Probabilidade</th><th>Impacto</th><th>Status</th><th>Acoes</th></tr></thead><tbody>';
+    risks.forEach(r => {
+      h += '<tr><td>' + (r.type === 'risco' ? 'Risco' : 'Pendencia') + '</td><td><strong>' + r.title + '</strong></td><td>' + (r.project ? r.project.name : '-') + '</td><td>' + (r.probability || '-') + '</td><td>' + (r.impact || '-') + '</td><td>' + r.status + '</td>'
+        + '<td><button class="btn btn-sm btn-secondary" onclick="cycleRiskStatus(\'' + r.id + '\', \'' + r.status + '\')">Avancar Status</button> <button class="btn btn-sm btn-danger" onclick="deleteRisk(\'' + r.id + '\')">Excluir</button></td></tr>';
+    });
+    h += '</tbody></table>';
+    c.innerHTML = h;
+  } catch (e) { c.innerHTML = '<div class="loading">Erro ao carregar</div>'; }
+}
+
+function openRiskModal() {
+  document.getElementById('riskProject').innerHTML = cachedProjects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+  document.getElementById('riskType').value = 'risco';
+  document.getElementById('riskTitle').value = '';
+  document.getElementById('riskDesc').value = '';
+  document.getElementById('riskProbability').value = '';
+  document.getElementById('riskImpact').value = '';
+  document.getElementById('riskStatus').value = 'aberto';
+  document.getElementById('riskModal').style.display = 'flex';
+}
+
+async function saveRisk() {
+  const projectId = document.getElementById('riskProject').value;
+  const type = document.getElementById('riskType').value;
+  const title = document.getElementById('riskTitle').value;
+  const description = document.getElementById('riskDesc').value;
+  const probability = document.getElementById('riskProbability').value;
+  const impact = document.getElementById('riskImpact').value;
+  const status = document.getElementById('riskStatus').value;
+  const error = document.getElementById('riskError');
+  if (!title || !projectId) { error.textContent = 'Titulo e projeto sao obrigatorios'; error.style.display = 'block'; return; }
+  error.style.display = 'none';
+  try {
+    const res = await fetch(API + '/api/v1/risks', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ projectId, type, title, description, probability, impact, status }) });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+    closeModal('riskModal');
+    loadRiscosView();
+  } catch (e) { error.textContent = e.message; error.style.display = 'block'; }
+}
+
+async function cycleRiskStatus(id, current) {
+  const next = current === 'aberto' ? 'mitigado' : current === 'mitigado' ? 'encerrado' : 'aberto';
+  await fetch(API + '/api/v1/risks/' + id, { method: 'PUT', headers: apiHeaders(), body: JSON.stringify({ status: next }) });
+  loadRiscosView();
+}
+
+async function deleteRisk(id) {
+  if (!confirm('Excluir este registro?')) return;
+  await fetch(API + '/api/v1/risks/' + id, { method: 'DELETE', headers: apiHeaders() });
+  loadRiscosView();
+}
+
+// ============ EQUIPE ============
+async function loadEquipeView() {
+  const c = document.getElementById('equipeTable');
+  try {
+    const res = await fetch(API + '/api/v1/users', { headers: apiHeaders() });
+    const users = await res.json();
+    if (!users || users.length === 0) { c.innerHTML = '<div class="loading">Nenhum usuario</div>'; return; }
+    let h = '<table class="table-projects"><thead><tr><th>Nome</th><th>Email</th><th>Perfil</th><th>Acoes</th></tr></thead><tbody>';
+    users.forEach(u => {
+      const isSelf = currentUser && u.id === currentUser.id;
+      const roleLabel = u.role === 'admin' ? 'Administrador' : u.role === 'coordenador' ? 'Coordenador' : 'Engenheiro';
+      h += '<tr><td><strong>' + u.name + '</strong></td><td>' + u.email + '</td><td>' + roleLabel + '</td>'
+        + '<td>' + (isSelf ? '(voce)' : '<button class="btn btn-sm btn-danger" onclick="deleteUser(\'' + u.id + '\')">Remover</button>') + '</td></tr>';
+    });
+    h += '</tbody></table>';
+    c.innerHTML = h;
+  } catch (e) { c.innerHTML = '<div class="loading">Erro ao carregar equipe</div>'; }
+}
+
+function openUserModal() {
+  document.getElementById('userNameInput').value = '';
+  document.getElementById('userEmailInput').value = '';
+  document.getElementById('userPasswordInput').value = '';
+  document.getElementById('userRoleInput').value = 'engenheiro';
+  document.getElementById('userModal').style.display = 'flex';
+}
+
+async function saveUser() {
+  const name = document.getElementById('userNameInput').value;
+  const email = document.getElementById('userEmailInput').value;
+  const password = document.getElementById('userPasswordInput').value;
+  const role = document.getElementById('userRoleInput').value;
+  const error = document.getElementById('userError');
+  if (!name || !email || !password) { error.textContent = 'Preencha todos os campos'; error.style.display = 'block'; return; }
+  if (password.length < 6) { error.textContent = 'Senha deve ter no minimo 6 caracteres'; error.style.display = 'block'; return; }
+  error.style.display = 'none';
+  try {
+    const res = await fetch(API + '/api/v1/users', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ name, email, password, role }) });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Erro ao convidar'); }
+    closeModal('userModal');
+    loadEquipeView();
+  } catch (e) { error.textContent = e.message; error.style.display = 'block'; }
+}
+
+async function deleteUser(id) {
+  if (!confirm('Remover este usuario da organizacao?')) return;
+  try {
+    const res = await fetch(API + '/api/v1/users/' + id, { method: 'DELETE', headers: apiHeaders() });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Erro'); }
+    loadEquipeView();
+  } catch (e) { alert(e.message); }
+}
+
+// ============ CONFIGURACOES ============
+function loadConfiguracoesView() {
+  document.getElementById('cfgOrgName').value = currentUser.organization.name || '';
+  document.getElementById('cfgUserName').textContent = currentUser.name;
+  document.getElementById('cfgUserEmail').textContent = currentUser.email;
+  document.getElementById('cfgUserRole').textContent = currentUser.role === 'admin' ? 'Administrador' : currentUser.role === 'coordenador' ? 'Coordenador' : 'Engenheiro';
+  document.getElementById('cfgBillingCard').classList.toggle('hidden', currentUser.role !== 'admin');
+  if (currentUser.role === 'admin') {
+    fetch(API + '/api/v1/billing/status', { headers: apiHeaders() }).then(r => r.json()).then(s => {
+      document.getElementById('cfgPlanName').textContent = PLAN_LABELS[s.plan] || s.plan;
+      document.getElementById('cfgSubStatus').textContent = s.subscriptionStatus === 'active' ? 'Ativa' : s.subscriptionStatus === 'overdue' ? 'Pagamento em atraso' : s.subscriptionStatus === 'canceled' ? 'Cancelada' : 'Pendente';
+    });
+  }
+}
+
+const PLAN_LABELS = { basico: 'Basico', pro: 'Pro', enterprise: 'Enterprise', free: 'Nenhum (gratuito)' };
+
+async function openBillingFromSettings() {
+  const res = await fetch(API + '/api/v1/billing/status', { headers: apiHeaders() });
+  const status = await res.json();
+  showPaywall(status);
+}
+
+async function saveOrganization() {
+  const name = document.getElementById('cfgOrgName').value;
+  const error = document.getElementById('orgError');
+  if (!name) { error.textContent = 'Nome e obrigatorio'; error.style.display = 'block'; return; }
+  error.style.display = 'none';
+  try {
+    const res = await fetch(API + '/api/v1/organization', { method: 'PUT', headers: apiHeaders(), body: JSON.stringify({ name }) });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || 'Erro ao salvar');
+    currentUser.organization.name = d.name;
+    document.getElementById('userOrg').textContent = d.name;
+    document.getElementById('headerOrg').textContent = 'ConstructFlow - ' + d.name;
+  } catch (e) { error.textContent = e.message; error.style.display = 'block'; }
+}
+
+// ============ INIT ============
+const token = getToken();
+if (token) {
+  fetch(API + '/api/v1/auth/me', { headers: apiHeaders() }).then(r => r.json()).then(data => {
+    if (data.id) enterDashboard({ user: data, organization: data.organization });
+    else { clearToken(); showScreen('login'); }
+  }).catch(() => { clearToken(); showScreen('login'); });
+} else { showScreen('login'); }
+</script>
+</body>
+</html>
