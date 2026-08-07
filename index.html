@@ -10,6 +10,21 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 .auth-screen { display: flex; min-height: 100vh; align-items: center; justify-content: center; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); }
+.landing-page { min-height: 100vh; background: #fff; }
+.landing-nav { display: flex; justify-content: space-between; align-items: center; padding: 20px 40px; border-bottom: 1px solid #f3f4f6; }
+.landing-nav .logo { font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.landing-nav .logo span { background: #4f46e5; color: #fff; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+.landing-hero { text-align: center; padding: 80px 20px 60px; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); color: #fff; }
+.landing-hero h1 { font-size: 40px; font-weight: 700; max-width: 800px; margin: 0 auto 16px; line-height: 1.2; }
+.landing-hero p { font-size: 16px; color: #cbd5e1; max-width: 600px; margin: 0 auto 32px; }
+.landing-features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; max-width: 1000px; margin: 60px auto; padding: 0 20px; }
+.feature-card { background: #f9fafb; border-radius: 12px; padding: 24px; text-align: center; }
+.feature-card .feature-icon { font-size: 32px; margin-bottom: 12px; }
+.feature-card h3 { font-size: 15px; margin-bottom: 8px; }
+.feature-card p { font-size: 13px; color: #6b7280; }
+.landing-pricing { padding: 20px 20px 60px; background: #f9fafb; }
+.landing-footer { text-align: center; padding: 24px; font-size: 12px; color: #9ca3af; border-top: 1px solid #f3f4f6; }
+@media (max-width: 768px) { .landing-features { grid-template-columns: 1fr; } .landing-hero h1 { font-size: 28px; } }
 .auth-box { background: #fff; border-radius: 16px; padding: 40px; width: 420px; max-width: 90%; }
 .auth-box .logo { font-size: 24px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
 .auth-box h2 { font-size: 20px; margin-bottom: 4px; }
@@ -153,8 +168,44 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 </head>
 <body>
 
-<div class="auth-screen" id="loginScreen">
+<div class="landing-page" id="landingScreen">
+<div class="landing-nav">
+<div class="logo"><span>CF</span> ConstructFlow</div>
+<div style="display:flex;gap:10px;">
+<button class="btn btn-secondary" onclick="showScreen('login')">Entrar</button>
+<button class="btn btn-primary" onclick="showScreen('signup')">Criar conta</button>
+</div>
+</div>
+
+<div class="landing-hero">
+<h1>Gestao de obras, do canteiro ao financeiro, num so lugar</h1>
+<p>Projetos, cronograma, suprimentos, despesas e riscos - com previsibilidade de receita para o diretor e controle diario para o engenheiro.</p>
+<button class="btn btn-primary" style="padding:14px 28px;font-size:16px;" onclick="showScreen('signup')">Comecar agora</button>
+</div>
+
+<div class="landing-features">
+<div class="feature-card"><div class="feature-icon">📁</div><h3>Projetos</h3><p>Cadastre obras, anexe a planilha de servicos e acompanhe tudo num painel so.</p></div>
+<div class="feature-card"><div class="feature-icon">🗂️</div><h3>Tarefas (Kanban)</h3><p>Distribua servicos para a equipe, arraste entre etapas, estilo Trello.</p></div>
+<div class="feature-card"><div class="feature-icon">📊</div><h3>Cronograma e Curva S</h3><p>Gantt com planejado, realizado, atrasado e replanejado em tempo real.</p></div>
+<div class="feature-card"><div class="feature-icon">📦</div><h3>Suprimentos</h3><p>Controle de entrada e saida de materiais com alerta automatico de desvio.</p></div>
+<div class="feature-card"><div class="feature-icon">💵</div><h3>Despesas e Riscos</h3><p>Lance gastos, registre riscos e pendencias com destaque automatico de pontos criticos.</p></div>
+<div class="feature-card"><div class="feature-icon">📈</div><h3>Previsao de Receita</h3><p>O diretor acompanha a receita prevista dos servicos versus as despesas, mes a mes.</p></div>
+</div>
+
+<div class="landing-pricing">
+<h2 style="text-align:center;margin-bottom:8px;">Planos</h2>
+<p style="text-align:center;color:#6b7280;margin-bottom:32px;">Escolha o plano ideal para o tamanho da sua obra</p>
+<div class="summary-cards" id="landingPlansContainer" style="max-width:900px;margin:0 auto;"><div class="loading">Carregando planos...</div></div>
+</div>
+
+<div class="landing-footer">
+<p>&copy; 2026 ConstructFlow. Todos os direitos reservados.</p>
+</div>
+</div>
+
+<div class="auth-screen hidden" id="loginScreen">
 <div class="auth-box">
+<div class="link" style="margin-bottom:12px;"><a onclick="showScreen('landing')">&larr; Voltar</a></div>
 <div class="logo"><span>CF</span> ConstructFlow</div>
 <h2>Fazer login</h2>
 <p>Entre com suas credenciais</p>
@@ -171,6 +222,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 
 <div class="auth-screen hidden" id="signupScreen">
 <div class="auth-box">
+<div class="link" style="margin-bottom:12px;"><a onclick="showScreen('landing')">&larr; Voltar</a></div>
 <div class="logo"><span>CF</span> ConstructFlow</div>
 <h2>Criar nova conta</h2>
 <p>Preencha os dados para se cadastrar</p>
@@ -702,10 +754,28 @@ function apiHeaders() {
 }
 
 function showScreen(s) {
+  document.getElementById('landingScreen').classList.add('hidden');
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('signupScreen').classList.add('hidden');
   if (s === 'login') document.getElementById('loginScreen').classList.remove('hidden');
-  else document.getElementById('signupScreen').classList.remove('hidden');
+  else if (s === 'signup') document.getElementById('signupScreen').classList.remove('hidden');
+  else document.getElementById('landingScreen').classList.remove('hidden');
+}
+
+async function loadLandingPlans() {
+  const c = document.getElementById('landingPlansContainer');
+  try {
+    const res = await fetch(API + '/api/v1/public/plans');
+    const plans = await res.json();
+    c.innerHTML = Object.entries(plans).map(([key, p]) => (
+      '<div class="kpi-card">'
+      + '<div class="kpi-label">' + p.name.toUpperCase() + '</div>'
+      + '<div class="kpi-value">R$ ' + p.price.toFixed(2).replace('.', ',') + '<span style="font-size:12px;color:#6b7280;">/mes</span></div>'
+      + '<p style="font-size:12px;color:#6b7280;margin:8px 0 16px;">' + p.description + '</p>'
+      + '<button class="btn btn-primary" style="width:100%;" onclick="showScreen(\'signup\')">Assinar</button>'
+      + '</div>'
+    )).join('');
+  } catch (e) { c.innerHTML = '<div class="loading">Erro ao carregar planos</div>'; }
 }
 
 async function login() {
@@ -774,6 +844,7 @@ let lastBillingStatus = null;
 async function enterDashboard(data) {
   currentUser = data.user;
   currentUser.organization = data.organization;
+  document.getElementById('landingScreen').classList.add('hidden');
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('signupScreen').classList.add('hidden');
 
@@ -812,6 +883,7 @@ async function enterDashboard(data) {
 async function showPaywall(status) {
   lastBillingStatus = status;
   document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('landingScreen').classList.add('hidden');
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('signupScreen').classList.add('hidden');
   document.getElementById('paywallScreen').classList.remove('hidden');
@@ -2302,9 +2374,10 @@ const token = getToken();
 if (token) {
   fetch(API + '/api/v1/auth/me', { headers: apiHeaders() }).then(r => r.json()).then(data => {
     if (data.id) enterDashboard({ user: data, organization: data.organization });
-    else { clearToken(); showScreen('login'); }
-  }).catch(() => { clearToken(); showScreen('login'); });
-} else { showScreen('login'); }
+    else { clearToken(); showScreen('landing'); }
+  }).catch(() => { clearToken(); showScreen('landing'); });
+} else { showScreen('landing'); }
+loadLandingPlans();
 </script>
 </body>
 </html>
