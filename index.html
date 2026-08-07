@@ -262,13 +262,12 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
     <div class="header">
       <div><h1>Projetos</h1><p>Todos os projetos da organizacao</p></div>
       <div class="header-right">
-        <label class="file-input-label">📥 Criar Novos Projetos (Excel)<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importProjects(this)"></label>
-        <button class="btn btn-secondary" onclick="openComplementModal()">📎 Complementar Projeto Existente</button>
-        <button class="btn btn-secondary" onclick="exportProjects()">📤 Exportar Excel</button>
         <button class="btn btn-primary" onclick="openProjectModal()">+ Novo Projeto</button>
+        <button class="btn btn-secondary" onclick="openComplementModal()">📎 Complementar Projeto</button>
+        <button class="btn btn-secondary" onclick="exportProjects()">📤 Exportar Excel</button>
       </div>
     </div>
-    <p class="import-hint"><strong>Criar Novos Projetos</strong>: cada linha da planilha vira um projeto novo (colunas: name, description, budget, spent, status, responsible, deadline). <strong>Complementar Projeto Existente</strong>: escolha um projeto ja cadastrado e a planilha (com abas de Tarefas, Despesas ou Riscos) distribui as informacoes dentro dele, sem criar projeto novo.</p>
+    <p class="import-hint">Para adicionar tarefas, despesas ou riscos de uma planilha a um projeto ja existente, use "Complementar Projeto" - a planilha pode ter varias abas e a plataforma distribui as informacoes automaticamente, sem criar projeto novo.</p>
     <div class="card"><div id="projetosFullTable"><div class="loading">Carregando...</div></div></div>
     <div class="card" style="margin-top:16px;">
       <h3>Curva S (Planejado x Realizado)</h3>
@@ -405,7 +404,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <option value="reprojetado">Reprojetado</option>
 </select>
 <label class="field">Responsavel</label>
-<input id="inputResponsible" type="text" class="input">
+<select id="inputResponsibleId" class="input"><option value="">Sem responsavel</option></select>
 <label class="field">Data de Inicio</label>
 <input id="inputStartDate" type="date" class="input">
 <label class="field">Prazo</label>
@@ -1044,7 +1043,7 @@ function renderProjectsTable(projects) {
   let h = '<table class="table-projects"><thead><tr><th>Projeto</th><th>Status</th>' + (financeOk ? '<th>Orcamento</th><th>Gasto</th>' : '') + '<th>Responsavel</th></tr></thead><tbody>';
   projects.slice(0, 6).forEach(p => {
     const meta = projectStatusMeta(p.status);
-    h += '<tr><td><strong>' + p.name + '</strong></td><td><span class="' + meta.cls + '">' + meta.label + '</span></td>' + (financeOk ? '<td>' + fmtMoney(p.budget) + '</td><td>' + fmtMoney(p.spent) + '</td>' : '') + '<td>' + (p.responsible || '-') + '</td></tr>';
+    h += '<tr><td><strong>' + p.name + '</strong></td><td><span class="' + meta.cls + '">' + meta.label + '</span></td>' + (financeOk ? '<td>' + fmtMoney(p.budget) + '</td><td>' + fmtMoney(p.spent) + '</td>' : '') + '<td>' + (p.responsibleUser ? p.responsibleUser.name : '-') + '</td></tr>';
   });
   h += '</tbody></table>';
   c.innerHTML = h;
@@ -1066,7 +1065,7 @@ async function loadProjetosView() {
       const prazoDesvio = p.deadline && new Date(p.deadline) < new Date() && p.status !== 'completed';
       h += '<tr><td><strong>' + p.name + '</strong>' + (custoDesvio ? '<span class="deviation-badge">DESVIO CUSTO</span>' : '') + (prazoDesvio ? '<span class="deviation-badge">DESVIO PRAZO</span>' : '') + '</td><td><span class="' + meta.cls + '">' + meta.label + '</span></td>'
         + (financeOk ? '<td>' + fmtMoney(p.budget) + '</td><td>' + fmtMoney(p.spent) + '</td>' : '')
-        + '<td>' + (p.responsible || '-') + '</td><td>' + fmtDate(p.deadline) + '</td>'
+        + '<td>' + (p.responsibleUser ? p.responsibleUser.name : '-') + '</td><td>' + fmtDate(p.deadline) + '</td>'
         + '<td><button class="btn btn-sm btn-secondary" onclick="editProject(\'' + p.id + '\')">Editar</button> <button class="btn btn-sm btn-danger" onclick="deleteProject(\'' + p.id + '\')">Excluir</button></td></tr>';
     });
     h += '</tbody></table>';
@@ -1123,7 +1122,7 @@ function renderCurvaS() {
     + '</div>' + svg;
 }
 
-function openProjectModal() {
+async function openProjectModal() {
   editingProjectId = null;
   document.getElementById('projectModalTitle').textContent = 'Novo Projeto';
   document.getElementById('inputName').value = '';
@@ -1131,7 +1130,8 @@ function openProjectModal() {
   document.getElementById('inputBudget').value = '';
   document.getElementById('inputSpent').value = '';
   document.getElementById('inputStatus').value = 'active';
-  document.getElementById('inputResponsible').value = '';
+  await loadUsersCache();
+  document.getElementById('inputResponsibleId').innerHTML = '<option value="">Sem responsavel</option>' + cachedUsers.map(u => '<option value="' + u.id + '">' + u.name + '</option>').join('');
   document.getElementById('inputStartDate').value = '';
   document.getElementById('inputDeadline').value = '';
   document.getElementById('projectFinanceFields').classList.toggle('hidden', !canSeeFinanceUI());
@@ -1139,7 +1139,7 @@ function openProjectModal() {
   document.getElementById('projectModal').style.display = 'flex';
 }
 
-function editProject(id) {
+async function editProject(id) {
   const p = cachedProjects.find(x => x.id === id);
   if (!p) return;
   editingProjectId = id;
@@ -1149,7 +1149,8 @@ function editProject(id) {
   document.getElementById('inputBudget').value = p.budget || '';
   document.getElementById('inputSpent').value = p.spent || '';
   document.getElementById('inputStatus').value = p.status || 'active';
-  document.getElementById('inputResponsible').value = p.responsible || '';
+  await loadUsersCache();
+  document.getElementById('inputResponsibleId').innerHTML = '<option value="">Sem responsavel</option>' + cachedUsers.map(u => '<option value="' + u.id + '"' + (u.id === p.responsibleId ? ' selected' : '') + '>' + u.name + '</option>').join('');
   document.getElementById('inputStartDate').value = p.startDate ? p.startDate.substring(0, 10) : '';
   document.getElementById('inputDeadline').value = p.deadline ? p.deadline.substring(0, 10) : '';
   document.getElementById('projectFinanceFields').classList.toggle('hidden', !canSeeFinanceUI());
@@ -1162,13 +1163,13 @@ async function saveProject() {
   const budget = parseFloat(document.getElementById('inputBudget').value) || 0;
   const spent = parseFloat(document.getElementById('inputSpent').value) || 0;
   const status = document.getElementById('inputStatus').value;
-  const responsible = document.getElementById('inputResponsible').value;
+  const responsibleId = document.getElementById('inputResponsibleId').value;
   const startDate = document.getElementById('inputStartDate').value;
   const deadline = document.getElementById('inputDeadline').value;
   const error = document.getElementById('projectError');
   if (!name) { error.textContent = 'Nome do projeto e obrigatorio'; error.style.display = 'block'; return; }
   error.style.display = 'none';
-  const body = { name, description, budget, spent, status, responsible, startDate: startDate || undefined, deadline: deadline || undefined };
+  const body = { name, description, budget, spent, status, responsibleId: responsibleId || null, startDate: startDate || undefined, deadline: deadline || undefined };
   try {
     const url = editingProjectId ? API + '/api/v1/projects/' + editingProjectId : API + '/api/v1/projects';
     const method = editingProjectId ? 'PUT' : 'POST';
@@ -1228,17 +1229,6 @@ function parseNumberBR(v) {
 function normKey(s) {
   return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
 }
-
-const PROJECT_FIELDS = [
-  { key: 'name', label: 'Nome do Projeto', required: true, synonyms: ['name', 'nome', 'projeto', 'project', 'obra', 'titulo', 'title', 'nomeprojeto', 'projectname'] },
-  { key: 'description', label: 'Descricao', synonyms: ['description', 'descricao', 'desc', 'obs', 'observacao', 'detalhes'] },
-  { key: 'budget', label: 'Orcamento', synonyms: ['budget', 'orcamento', 'valorprevisto', 'valortotal', 'valor', 'custoprevisto', 'custoorcado'] },
-  { key: 'spent', label: 'Gasto Atual', synonyms: ['spent', 'gasto', 'gastoatual', 'custoreal', 'valorgasto', 'custoexecutado', 'realizado'] },
-  { key: 'status', label: 'Status', synonyms: ['status', 'situacao', 'estado'] },
-  { key: 'responsible', label: 'Responsavel', synonyms: ['responsible', 'responsavel', 'encarregado', 'gestor', 'gerente'] },
-  { key: 'startDate', label: 'Data de Inicio', synonyms: ['startdate', 'datainicio', 'inicio', 'datadeinicio', 'start'] },
-  { key: 'deadline', label: 'Prazo', synonyms: ['deadline', 'prazo', 'datafinal', 'termino', 'fim', 'dataentrega', 'entrega'] }
-];
 
 const TASK_FIELDS = [
   { key: 'title', label: 'Titulo da Tarefa', required: true, synonyms: ['title', 'titulo', 'tarefa', 'task', 'atividade', 'servico'] },
@@ -1355,7 +1345,7 @@ async function processMasterSpreadsheet(projectId, file) {
 let importContext = { target: null, headers: [], rows: [], fieldDefs: [] };
 
 function openImportMapping(target, headers, rows) {
-  importContext = { target, headers, rows, fieldDefs: target === 'projects' ? PROJECT_FIELDS : TASK_FIELDS };
+  importContext = { target, headers, rows, fieldDefs: TASK_FIELDS };
   const mapping = autoMatchColumns(headers, importContext.fieldDefs);
   document.getElementById('importMappingTitle').textContent = target === 'projects' ? 'Confirmar importacao de Projetos (' + rows.length + ' linhas)' : 'Confirmar importacao de Tarefas (' + rows.length + ' linhas)';
   const container = document.getElementById('importMappingFields');
@@ -1391,26 +1381,7 @@ function confirmImportMapping() {
   });
 
   closeModal('importMappingModal');
-  if (importContext.target === 'projects') doImportProjects(normalizedRows);
-  else doImportTasks(normalizedRows);
-}
-
-function importProjects(input) {
-  const file = input.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    try {
-      const wb = XLSX.read(e.target.result, { type: 'array' });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-      if (!rows.length) { alert('Planilha vazia ou sem dados legiveis.'); input.value = ''; return; }
-      const headers = Object.keys(rows[0]);
-      openImportMapping('projects', headers, rows);
-    } catch (err) { alert('Erro ao ler planilha: ' + err.message); }
-    input.value = '';
-  };
-  reader.readAsArrayBuffer(file);
+  doImportTasks(normalizedRows);
 }
 
 function openComplementModal() {
@@ -1446,20 +1417,10 @@ async function confirmComplement() {
   loadProjetosView();
 }
 
-async function doImportProjects(rows) {
-  try {
-    const res = await fetch(API + '/api/v1/projects/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows }) });
-    const d = await res.json();
-    if (!res.ok) throw new Error(d.error || 'Erro ao importar');
-    alert(d.created + ' projeto(s) importado(s) com sucesso.');
-    loadProjetosView();
-  } catch (err) { alert('Erro ao importar: ' + err.message); }
-}
-
 async function exportProjects() {
   const res = await fetch(API + '/api/v1/projects', { headers: apiHeaders() });
   const projects = await res.json();
-  const rows = projects.map(p => ({ Nome: p.name, Descricao: p.description || '', Status: p.status, Orcamento: p.budget, Gasto: p.spent, Responsavel: p.responsible || '', Prazo: p.deadline ? p.deadline.substring(0, 10) : '' }));
+  const rows = projects.map(p => ({ Nome: p.name, Descricao: p.description || '', Status: p.status, Orcamento: p.budget, Gasto: p.spent, Responsavel: p.responsibleUser ? p.responsibleUser.name : '', Prazo: p.deadline ? p.deadline.substring(0, 10) : '' }));
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Projetos');
@@ -1560,6 +1521,14 @@ function fillTaskParentSelect(projectId, selectedId) {
   sel.innerHTML = '<option value="">Nenhuma (tarefa de topo)</option>' + options.map(t => '<option value="' + t.id + '"' + (t.id === selectedId ? ' selected' : '') + '>' + t.title + '</option>').join('');
 }
 
+async function quickAssignChild(childId, assigneeId) {
+  try {
+    await fetch(API + '/api/v1/tasks/' + childId, { method: 'PUT', headers: apiHeaders(), body: JSON.stringify({ assigneeId: assigneeId || null }) });
+    const child = (window._cachedTasks || []).find(x => x.id === childId);
+    if (child) child.assigneeId = assigneeId || null;
+  } catch (e) { alert('Erro ao atribuir responsavel'); }
+}
+
 async function editTask(id) {
   const t = (window._cachedTasks || []).find(x => x.id === id);
   if (!t) return;
@@ -1587,8 +1556,10 @@ async function editTask(id) {
     childrenWrap.classList.remove('hidden');
     document.getElementById('taskChildrenList').innerHTML = children.map(ch => {
       const statusLabel = { pending: 'Pendente', in_progress: 'Em andamento', done: 'Concluida' }[ch.status] || ch.status;
-      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">'
-        + '<span>' + ch.title + ' <span style="color:#6b7280;">(' + statusLabel + ')</span></span>'
+      const assigneeOptions = '<option value="">Sem responsavel</option>' + cachedUsers.map(u => '<option value="' + u.id + '"' + (u.id === ch.assigneeId ? ' selected' : '') + '>' + u.name + '</option>').join('');
+      return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">'
+        + '<span style="flex:1;">' + ch.title + ' <span style="color:#6b7280;">(' + statusLabel + ')</span></span>'
+        + '<select style="font-size:11px;padding:2px 4px;border:1px solid #d1d5db;border-radius:4px;max-width:130px;" onchange="quickAssignChild(\'' + ch.id + '\', this.value)">' + assigneeOptions + '</select>'
         + '<a style="color:#4f46e5;cursor:pointer;" onclick="editTask(\'' + ch.id + '\')">Abrir</a>'
         + '</div>';
     }).join('');
