@@ -262,12 +262,13 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
     <div class="header">
       <div><h1>Projetos</h1><p>Todos os projetos da organizacao</p></div>
       <div class="header-right">
-        <label class="file-input-label">📥 Importar Excel<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importProjects(this)"></label>
+        <label class="file-input-label">📥 Criar Novos Projetos (Excel)<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importProjects(this)"></label>
+        <button class="btn btn-secondary" onclick="openComplementModal()">📎 Complementar Projeto Existente</button>
         <button class="btn btn-secondary" onclick="exportProjects()">📤 Exportar Excel</button>
         <button class="btn btn-primary" onclick="openProjectModal()">+ Novo Projeto</button>
       </div>
     </div>
-    <p class="import-hint">Planilha de importacao deve ter colunas: name, description, budget, spent, status, responsible, deadline (AAAA-MM-DD)</p>
+    <p class="import-hint"><strong>Criar Novos Projetos</strong>: cada linha da planilha vira um projeto novo (colunas: name, description, budget, spent, status, responsible, deadline). <strong>Complementar Projeto Existente</strong>: escolha um projeto ja cadastrado e a planilha (com abas de Tarefas, Despesas ou Riscos) distribui as informacoes dentro dele, sem criar projeto novo.</p>
     <div class="card"><div id="projetosFullTable"><div class="loading">Carregando...</div></div></div>
     <div class="card" style="margin-top:16px;">
       <h3>Curva S (Planejado x Realizado)</h3>
@@ -621,6 +622,24 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 </div>
 
 <!-- MODAL BOQ -->
+<!-- MODAL COMPLEMENTAR PROJETO -->
+<div class="modal-overlay" id="complementModal">
+<div class="modal-box" style="width:520px;">
+<h2 style="margin-bottom:8px;">Complementar Projeto Existente</h2>
+<p style="font-size:12px;color:#6b7280;margin-bottom:16px;">Escolha o projeto que vai receber as informacoes desta planilha. Nenhum projeto novo sera criado.</p>
+<div class="error" id="complementError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+<label class="field">Projeto</label>
+<select id="complementProjectSelect" class="input"></select>
+<label class="field">Planilha</label>
+<input type="file" id="complementFileInput" accept=".xlsx,.xls" class="input">
+<p class="import-hint">Pode ter varias abas (Tarefas, Despesas, Riscos). A plataforma detecta automaticamente cada aba e distribui as informacoes dentro do projeto escolhido.</p>
+<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;">
+<button class="btn btn-secondary" onclick="closeModal('complementModal')">Cancelar</button>
+<button class="btn btn-primary" id="complementConfirmBtn" onclick="confirmComplement()">Importar para este Projeto</button>
+</div>
+</div>
+</div>
+
 <div class="modal-overlay" id="boqModal">
 <div class="modal-box" style="width:560px;">
 <h2 style="margin-bottom:8px;">Importar Lista de Servicos</h2>
@@ -1392,6 +1411,39 @@ function importProjects(input) {
     input.value = '';
   };
   reader.readAsArrayBuffer(file);
+}
+
+function openComplementModal() {
+  if (!cachedProjects.length) { alert('Cadastre um projeto primeiro.'); return; }
+  document.getElementById('complementProjectSelect').innerHTML = cachedProjects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+  document.getElementById('complementFileInput').value = '';
+  document.getElementById('complementError').style.display = 'none';
+  document.getElementById('complementModal').style.display = 'flex';
+}
+
+async function confirmComplement() {
+  const projectId = document.getElementById('complementProjectSelect').value;
+  const file = document.getElementById('complementFileInput').files[0];
+  const error = document.getElementById('complementError');
+  const btn = document.getElementById('complementConfirmBtn');
+  if (!projectId) { error.textContent = 'Selecione um projeto'; error.style.display = 'block'; return; }
+  if (!file) { error.textContent = 'Selecione uma planilha'; error.style.display = 'block'; return; }
+  error.style.display = 'none';
+  btn.textContent = 'Importando, aguarde...';
+  btn.disabled = true;
+  const result = await processMasterSpreadsheet(projectId, file);
+  btn.textContent = 'Importar para este Projeto';
+  btn.disabled = false;
+  if (result.error) {
+    error.textContent = 'Erro ao ler planilha: ' + result.error;
+    error.style.display = 'block';
+    return;
+  }
+  closeModal('complementModal');
+  let msg = 'Projeto complementado: ' + result.tasksCreated + ' tarefa(s), ' + result.expensesCreated + ' despesa(s), ' + result.risksCreated + ' risco(s)/pendencia(s).';
+  if (result.unrecognized.length) msg += ' Abas nao reconhecidas (ignoradas): ' + result.unrecognized.join(', ') + '.';
+  alert(msg);
+  loadProjetosView();
 }
 
 async function doImportProjects(rows) {
