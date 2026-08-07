@@ -7,7 +7,7 @@ const jwt = require('jsonwebtoken');
 
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'constructflow-secret';
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY || '');
+const stripe = process.env.STRIPE_SECRET_KEY ? require('stripe')(process.env.STRIPE_SECRET_KEY) : null;
 const APP_URL = process.env.APP_URL || '';
 
 const PLANS = {
@@ -187,6 +187,7 @@ const server = http.createServer(async (req, res) => {
 
     // ============ BILLING (STRIPE) ============
     if (req.url === '/api/v1/billing/webhook' && req.method === 'POST') {
+      if (!stripe) return sendJSON(res, 500, { error: 'Stripe nao configurado' });
       const sig = req.headers['stripe-signature'];
       const rawBody = await parseRawBody(req);
       let event;
