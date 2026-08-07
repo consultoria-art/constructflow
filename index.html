@@ -714,6 +714,10 @@ async function signup() {
 
 function logout() { clearToken(); location.reload(); }
 
+function canSeeFinanceUI() {
+  return currentUser && (currentUser.role === 'admin' || currentUser.role === 'coordenador');
+}
+
 function isOwnerUI() {
   return currentUser && currentUser.role === 'admin';
 }
