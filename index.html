@@ -247,6 +247,10 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
       <div class="card"><h3>Resumo Financeiro (Orcamento x Gasto)</h3><div id="pieFinanceiro"><div class="loading">Carregando...</div></div></div>
       <div class="card"><h3>Resumo de Prazos</h3><div id="pieResumoPrazos"><div class="loading">Carregando...</div></div></div>
     </div>
+    <div class="card hidden" id="revenueForecastCard" style="margin-bottom:24px;">
+      <h3>Previsao de Receita Mensal (baseada no cronograma) x Despesas</h3>
+      <div id="revenueForecastChart"><div class="loading">Carregando...</div></div>
+    </div>
     <div class="content-grid">
       <div class="card"><h3>Cronograma dos Projetos</h3><div id="ganttContainer"><div class="loading">Carregando...</div></div></div>
       <div class="card"><h3>Acompanhamento de Custos</h3><div id="costChart"><div class="loading">Carregando...</div></div></div>
@@ -273,6 +277,17 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
       <h3>Curva S (Planejado x Realizado)</h3>
       <select class="input" id="curvaSProjectSelect" style="width:260px;" onchange="renderCurvaS()"></select>
       <div class="curva-s-wrap" id="curvaSContainer"><div class="loading">Selecione um projeto</div></div>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <h3>Cronograma da Obra (Gantt por Atividade)</h3>
+      <select class="input" id="ganttActivityProjectSelect" style="width:260px;" onchange="renderActivityGantt()"></select>
+      <div class="gantt-legend">
+        <span><span class="cal-legend-dot" style="background:#9ca3af;"></span>Planejado</span>
+        <span><span class="cal-legend-dot" style="background:#22c55e;"></span>Realizado</span>
+        <span><span class="cal-legend-dot" style="background:#ef4444;"></span>Atrasado</span>
+        <span><span class="cal-legend-dot" style="background:#a855f7;"></span>Replanejado</span>
+      </div>
+      <div id="ganttActivityContainer"><div class="loading">Selecione um projeto</div></div>
     </div>
   </div>
 
@@ -448,8 +463,10 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <select id="taskAssignee" class="input"><option value="">Sem responsavel</option></select>
 <label class="field">Data de Inicio</label>
 <input id="taskStartDate" type="date" class="input">
-<label class="field">Prazo</label>
+<label class="field">Prazo (planejado)</label>
 <input id="taskDeadline" type="date" class="input">
+<label class="field">Nova data replanejada (preencha so se atrasou e precisa replanejar)</label>
+<input id="taskReplannedDeadline" type="date" class="input">
 <label class="field">Avanco fisico (%)</label>
 <input id="taskProgress" type="number" min="0" max="100" class="input" value="0">
 <label class="field">Horas trabalhadas</label>
@@ -748,6 +765,7 @@ function applyRolePermissions() {
   if (orcamentoNav) orcamentoNav.classList.toggle('hidden', !financeOk);
   document.getElementById('kpiOrcamentoCard') && document.getElementById('kpiOrcamentoCard').classList.toggle('hidden', !financeOk);
   document.getElementById('ownerSummarySection') && document.getElementById('ownerSummarySection').classList.toggle('hidden', !isOwnerUI());
+  document.getElementById('revenueForecastCard') && document.getElementById('revenueForecastCard').classList.toggle('hidden', !isOwnerUI());
 }
 
 let selectedPlanKey = null;
@@ -905,8 +923,45 @@ async function loadDashboard() {
     if (isOwnerUI()) {
       renderPieFinanceiro(dash.resumoFinanceiro);
       renderPiePrazos(dash.prazoDistribuicao);
+      renderRevenueForecast(dash.previsaoReceita);
     }
   } catch (e) { console.error('Erro ao carregar dashboard:', e); }
+}
+
+function renderRevenueForecast(data) {
+  const c = document.getElementById('revenueForecastChart');
+  if (!data || !data.length) { c.innerHTML = '<div class="loading">Cadastre custos e prazos nas tarefas para ver a previsao de receita</div>'; return; }
+  const maxVal = Math.max(1, ...data.map(d => Math.max(d.receitaRealizada + d.receitaPrevista, d.despesas)));
+  let html = '<div class="cal-legend" style="margin-bottom:12px;">'
+    + '<span><span class="cal-legend-dot" style="background:#22c55e;"></span>Receita Realizada</span>'
+    + '<span><span class="cal-legend-dot" style="background:#93c5fd;"></span>Receita Prevista</span>'
+    + '<span><span class="cal-legend-dot" style="background:#ef4444;"></span>Despesas</span>'
+    + '</div>';
+  html += '<table class="table-projects"><thead><tr><th>Mes</th><th>Receita Realizada</th><th>Receita Prevista</th><th>Total Receita</th><th>Despesas</th><th>Saldo Projetado</th></tr></thead><tbody>';
+  data.forEach(d => {
+    const totalReceita = d.receitaRealizada + d.receitaPrevista;
+    const saldo = totalReceita - d.despesas;
+    html += '<tr><td><strong>' + d.label + '</strong></td><td>' + fmtMoney(d.receitaRealizada) + '</td><td>' + fmtMoney(d.receitaPrevista) + '</td><td>' + fmtMoney(totalReceita) + '</td><td>' + fmtMoney(d.despesas) + '</td><td style="color:' + (saldo >= 0 ? '#065f46' : '#991b1b') + ';font-weight:600;">' + fmtMoney(saldo) + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  html += '<div style="margin-top:16px;">';
+  data.forEach(d => {
+    const wRealizada = Math.round((d.receitaRealizada / maxVal) * 100);
+    const wPrevista = Math.round((d.receitaPrevista / maxVal) * 100);
+    const wDespesas = Math.round((d.despesas / maxVal) * 100);
+    html += '<div style="margin-bottom:10px;">'
+      + '<div style="font-size:12px;color:#374151;margin-bottom:2px;">' + d.label + '</div>'
+      + '<div style="display:flex;height:14px;border-radius:4px;overflow:hidden;background:#f3f4f6;">'
+      + '<div style="width:' + wRealizada + '%;background:#22c55e;"></div>'
+      + '<div style="width:' + wPrevista + '%;background:#93c5fd;"></div>'
+      + '</div>'
+      + '<div style="height:8px;border-radius:4px;overflow:hidden;background:#f3f4f6;margin-top:2px;">'
+      + '<div style="width:' + wDespesas + '%;height:100%;background:#ef4444;"></div>'
+      + '</div>'
+      + '</div>';
+  });
+  html += '</div>';
+  c.innerHTML = html;
 }
 
 function makePieGradient(slices) {
@@ -1075,7 +1130,70 @@ async function loadProjetosView() {
     sel.innerHTML = projects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
     if (prevVal && projects.some(p => p.id === prevVal)) sel.value = prevVal;
     renderCurvaS();
+
+    const selGantt = document.getElementById('ganttActivityProjectSelect');
+    const prevValGantt = selGantt.value;
+    selGantt.innerHTML = projects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+    if (prevValGantt && projects.some(p => p.id === prevValGantt)) selGantt.value = prevValGantt;
+    await renderActivityGantt();
   } catch (e) { c.innerHTML = '<div class="loading">Erro ao carregar projetos</div>'; }
+}
+
+async function renderActivityGantt() {
+  const projectId = document.getElementById('ganttActivityProjectSelect').value;
+  const container = document.getElementById('ganttActivityContainer');
+  if (!projectId) { container.innerHTML = '<div class="loading">Selecione um projeto</div>'; return; }
+
+  const res = await fetch(API + '/api/v1/tasks', { headers: apiHeaders() });
+  const allTasks = await res.json();
+  window._cachedTasks = allTasks;
+  const tasks = allTasks.filter(t => t.projectId === projectId && t.startDate && t.deadline);
+
+  if (!tasks.length) { container.innerHTML = '<div class="loading">Cadastre Data de Inicio e Prazo nas tarefas deste projeto para ver o cronograma</div>'; return; }
+
+  const now = new Date();
+  const starts = tasks.map(t => new Date(t.startDate));
+  const ends = tasks.map(t => new Date(t.replannedDeadline || t.deadline));
+  let minDate = new Date(Math.min.apply(null, starts.concat([now])));
+  let maxDate = new Date(Math.max.apply(null, ends.concat([now])));
+  minDate = new Date(minDate.getTime() - 3 * 24 * 3600 * 1000);
+  maxDate = new Date(maxDate.getTime() + 3 * 24 * 3600 * 1000);
+  const totalMs = maxDate - minDate;
+  const todayPct = ((now - minDate) / totalMs) * 100;
+
+  let html = '<div class="gantt-scale-labels"><span>' + minDate.toLocaleDateString('pt-BR') + '</span><span>' + maxDate.toLocaleDateString('pt-BR') + '</span></div>';
+  html += '<div class="gantt-real">';
+  html += '<div class="gantt-today-line" style="left:' + todayPct + '%"><span class="gantt-today-label">Hoje</span></div>';
+
+  tasks.forEach(t => {
+    const s = new Date(t.startDate);
+    const originalEnd = new Date(t.deadline);
+    const replanEnd = t.replannedDeadline ? new Date(t.replannedDeadline) : null;
+    const leftPct = ((s - minDate) / totalMs) * 100;
+    const plannedWidthPct = Math.max(1, ((originalEnd - s) / totalMs) * 100);
+    const progress = t.progress || 0;
+    const isLate = (originalEnd < now && progress < 100 && !replanEnd) || (replanEnd && replanEnd < now && progress < 100);
+    const realizedColor = isLate ? '#ef4444' : '#22c55e';
+    const realizedWidthPct = plannedWidthPct * (progress / 100);
+
+    let replanBarHtml = '';
+    if (replanEnd) {
+      const replanLeftPct = ((originalEnd - minDate) / totalMs) * 100;
+      const replanWidthPct = Math.max(1, ((replanEnd - originalEnd) / totalMs) * 100);
+      replanBarHtml = '<div class="gantt-realized" style="left:' + replanLeftPct + '%;width:' + replanWidthPct + '%;background:#a855f7;top:0;"></div>';
+    }
+
+    html += '<div class="gantt-row">'
+      + '<div class="gantt-row-label">' + (t.isMilestone ? '⭐ ' : '') + t.title + ' &middot; ' + progress + '%' + (replanEnd ? ' &middot; replanejado p/ ' + fmtDate(replanEnd) : '') + '</div>'
+      + '<div class="gantt-track-real">'
+      + '<div class="gantt-planned" style="left:' + leftPct + '%;width:' + plannedWidthPct + '%;"></div>'
+      + '<div class="gantt-realized" style="left:' + leftPct + '%;width:' + realizedWidthPct + '%;background:' + realizedColor + ';"></div>'
+      + replanBarHtml
+      + '</div></div>';
+  });
+
+  html += '</div>';
+  container.innerHTML = html;
 }
 
 function renderCurvaS() {
@@ -1506,6 +1624,7 @@ async function openTaskModal() {
   document.getElementById('taskPriority').value = 'medium';
   document.getElementById('taskStartDate').value = '';
   document.getElementById('taskDeadline').value = '';
+  document.getElementById('taskReplannedDeadline').value = '';
   document.getElementById('taskProgress').value = 0;
   document.getElementById('taskHours').value = 0;
   document.getElementById('taskCost').value = 0;
@@ -1544,6 +1663,7 @@ async function editTask(id) {
   document.getElementById('taskPriority').value = t.priority || 'medium';
   document.getElementById('taskStartDate').value = t.startDate ? t.startDate.substring(0, 10) : '';
   document.getElementById('taskDeadline').value = t.deadline ? t.deadline.substring(0, 10) : '';
+  document.getElementById('taskReplannedDeadline').value = t.replannedDeadline ? t.replannedDeadline.substring(0, 10) : '';
   document.getElementById('taskProgress').value = t.progress || 0;
   document.getElementById('taskHours').value = t.hoursLogged || 0;
   document.getElementById('taskCost').value = t.cost || 0;
@@ -1579,6 +1699,7 @@ async function saveTask() {
   const parentId = document.getElementById('taskParent').value;
   const startDate = document.getElementById('taskStartDate').value;
   const deadline = document.getElementById('taskDeadline').value;
+  const replannedDeadline = document.getElementById('taskReplannedDeadline').value;
   const progress = document.getElementById('taskProgress').value;
   const hoursLogged = document.getElementById('taskHours').value;
   const cost = canSeeFinanceUI() ? document.getElementById('taskCost').value : undefined;
@@ -1587,7 +1708,7 @@ async function saveTask() {
   if (!title) { error.textContent = 'Titulo e obrigatorio'; error.style.display = 'block'; return; }
   if (!projectId) { error.textContent = 'Selecione um projeto'; error.style.display = 'block'; return; }
   error.style.display = 'none';
-  const body = { title, description, status, priority, assigneeId: assigneeId || null, parentId: parentId || null, startDate: startDate || undefined, deadline: deadline || undefined, progress, hoursLogged, cost, isMilestone };
+  const body = { title, description, status, priority, assigneeId: assigneeId || null, parentId: parentId || null, startDate: startDate || undefined, deadline: deadline || undefined, replannedDeadline: replannedDeadline || null, progress, hoursLogged, cost, isMilestone };
   if (!editingTaskId) body.projectId = projectId;
   try {
     const url = editingTaskId ? API + '/api/v1/tasks/' + editingTaskId : API + '/api/v1/tasks';
