@@ -219,6 +219,12 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 201, { token, user: { id: org.users[0].id, name, email, role: 'admin' }, organization: { id: org.id, name: org.name, slug: org.slug } });
     }
 
+    if (req.url === '/api/v1/public/plans' && req.method === 'GET') {
+      const clean = {};
+      Object.entries(PLANS).forEach(([k, p]) => { clean[k] = { name: p.name, price: p.price, description: p.description }; });
+      return sendJSON(res, 200, clean);
+    }
+
     if (req.url === '/api/v1/auth/login' && req.method === 'POST') {
       const { email, password } = await parseBody(req);
       if (!email || !password) return sendJSON(res, 400, { error: 'Email e senha obrigatorios' });
