@@ -113,6 +113,50 @@ async function runAutomation(organizationId) {
   return { alertsCreated, projectsMarkedDelayed };
 }
 
+function monthKey(date) {
+  const d = new Date(date);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+function monthLabel(key) {
+  const [y, m] = key.split('-');
+  const names = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  return names[parseInt(m) - 1] + '/' + y;
+}
+
+async function calcRevenueForecast(organizationId) {
+  const tasks = await prisma.task.findMany({ where: { project: { organizationId }, cost: { gt: 0 } } });
+  const expenses = await prisma.expense.findMany({ where: { project: { organizationId } } });
+
+  const revenueByMonth = {};
+  tasks.forEach(t => {
+    const targetDate = t.replannedDeadline || t.deadline;
+    if (!targetDate) return;
+    const key = monthKey(targetDate);
+    if (!revenueByMonth[key]) revenueByMonth[key] = { realizada: 0, prevista: 0 };
+    const pct = Math.min(100, Math.max(0, t.progress || 0)) / 100;
+    revenueByMonth[key].realizada += t.cost * pct;
+    revenueByMonth[key].prevista += t.cost * (1 - pct);
+  });
+
+  const expensesByMonth = {};
+  expenses.forEach(e => {
+    const key = monthKey(e.date);
+    expensesByMonth[key] = (expensesByMonth[key] || 0) + e.amount;
+  });
+
+  const allKeys = new Set([...Object.keys(revenueByMonth), ...Object.keys(expensesByMonth)]);
+  const sortedKeys = [...allKeys].sort();
+
+  return sortedKeys.map(key => ({
+    month: key,
+    label: monthLabel(key),
+    receitaRealizada: Math.round((revenueByMonth[key]?.realizada || 0) * 100) / 100,
+    receitaPrevista: Math.round((revenueByMonth[key]?.prevista || 0) * 100) / 100,
+    despesas: Math.round((expensesByMonth[key] || 0) * 100) / 100
+  }));
+}
+
 function calcProjecoes(projects) {
   const now = new Date();
   return projects
@@ -292,7 +336,8 @@ const server = http.createServer(async (req, res) => {
         reprojetado: pp.filter(p => p.status === 'reprojetado').length
       } : null;
       const resumoFinanceiro = (isOwner && financeOk) ? { orcamentoTotal: tb, gastoTotal: ts } : null;
-      return sendJSON(res, 200, { projetosAndamento: tp, atrasados: pp.filter(p => p.status === 'delayed').length, orcamentoVsGasto: financeOk ? (tb > 0 ? Math.round((ts / tb) * 100) : 0) : null, totalHoras: tt * 8, tarefasPendentes: tpen, projecoes, prazoDistribuicao, resumoFinanceiro });
+      const previsaoReceita = isOwner ? await calcRevenueForecast(user.organizationId) : null;
+      return sendJSON(res, 200, { projetosAndamento: tp, atrasados: pp.filter(p => p.status === 'delayed').length, orcamentoVsGasto: financeOk ? (tb > 0 ? Math.round((ts / tb) * 100) : 0) : null, totalHoras: tt * 8, tarefasPendentes: tpen, projecoes, prazoDistribuicao, resumoFinanceiro, previsaoReceita });
     }
 
     if (req.url === '/api/v1/automation/run' && req.method === 'POST') {
@@ -389,6 +434,7 @@ const server = http.createServer(async (req, res) => {
       const data = await parseBody(req);
       if (data.deadline) data.deadline = new Date(data.deadline);
       if (data.startDate) data.startDate = new Date(data.startDate);
+      if (data.replannedDeadline) data.replannedDeadline = new Date(data.replannedDeadline);
       if (data.progress !== undefined) data.progress = parseInt(data.progress) || 0;
       if (data.hoursLogged !== undefined) data.hoursLogged = parseFloat(data.hoursLogged) || 0;
       if (data.cost !== undefined) data.cost = parseFloat(data.cost) || 0;
@@ -440,6 +486,7 @@ const server = http.createServer(async (req, res) => {
       const data = await parseBody(req);
       if (data.deadline) data.deadline = new Date(data.deadline);
       if (data.startDate) data.startDate = new Date(data.startDate);
+      if (data.replannedDeadline !== undefined) data.replannedDeadline = data.replannedDeadline ? new Date(data.replannedDeadline) : null;
       if (data.progress !== undefined) data.progress = parseInt(data.progress) || 0;
       if (data.hoursLogged !== undefined) data.hoursLogged = parseFloat(data.hoursLogged) || 0;
       if (data.cost !== undefined) data.cost = parseFloat(data.cost) || 0;
