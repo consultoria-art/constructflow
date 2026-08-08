@@ -740,7 +740,7 @@ async function loadUsersCache() {
 }
 function fillTaskAssigneeSelect(selectedId) {
   const sel = document.getElementById('taskAssignee');
-  sel.innerHTML = '<option value="">Sem responsavel</option>' + cachedUsers.map(u => '<option value="' + u.id + '"' + (u.id === selectedId ? ' selected' : '') + '>' + u.name + '</option>').join('');
+  sel.innerHTML = '<option value="">Sem responsavel</option>' + cachedUsers.map(u => '<option value="' + u.id + '"' + (u.id === selectedId ? ' selected' : '') + '>' + esc(u.name) + '</option>').join('');
 }
 
 function getToken() { return localStorage.getItem('cf_token'); }
@@ -772,7 +772,7 @@ async function loadLandingPlans() {
       '<div class="kpi-card">'
       + '<div class="kpi-label">' + p.name.toUpperCase() + '</div>'
       + '<div class="kpi-value">R$ ' + p.price.toFixed(2).replace('.', ',') + '<span style="font-size:12px;color:#6b7280;">/mes</span></div>'
-      + '<p style="font-size:12px;color:#6b7280;margin:8px 0 16px;">' + p.description + '</p>'
+      + '<p style="font-size:12px;color:#6b7280;margin:8px 0 16px;">' + esc(p.description) + '</p>'
       + '<button class="btn btn-primary" style="width:100%;" onclick="showScreen(\'signup\')">Assinar</button>'
       + '</div>'
     )).join('');
@@ -911,7 +911,7 @@ async function showPaywall(status) {
       '<div class="kpi-card" style="cursor:pointer;border:2px solid ' + (selectedPlanKey === key ? '#4f46e5' : 'transparent') + ';" onclick="selectPlan(\'' + key + '\')">'
       + '<div class="kpi-label">' + p.name.toUpperCase() + '</div>'
       + '<div class="kpi-value">R$ ' + p.price.toFixed(2).replace('.', ',') + '<span style="font-size:12px;color:#6b7280;">/mes</span></div>'
-      + '<p style="font-size:12px;color:#6b7280;margin-top:8px;">' + p.description + '</p>'
+      + '<p style="font-size:12px;color:#6b7280;margin-top:8px;">' + esc(p.description) + '</p>'
       + '</div>'
     )).join('');
   } catch (e) { document.getElementById('paywallError').textContent = 'Erro ao carregar planos'; document.getElementById('paywallError').style.display = 'block'; }
@@ -967,6 +967,11 @@ function closeModal(id) {
   document.getElementById(id).style.display = 'none';
   const err = document.querySelector('#' + id + ' .error');
   if (err) err.style.display = 'none';
+}
+
+function esc(v) {
+  if (v === null || v === undefined) return '';
+  return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function fmtMoney(v) { return 'R$ ' + (v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -1122,7 +1127,7 @@ function renderGantt(projects) {
     const realizedWidthPct = widthPct * (avgProgress / 100);
 
     html += '<div class="gantt-row">'
-      + '<div class="gantt-row-label">' + p.name + ' &middot; ' + avgProgress + '% concluido</div>'
+      + '<div class="gantt-row-label">' + esc(p.name) + ' &middot; ' + avgProgress + '% concluido</div>'
       + '<div class="gantt-track-real">'
       + '<div class="gantt-planned" style="left:' + leftPct + '%;width:' + widthPct + '%;"></div>'
       + '<div class="gantt-realized" style="left:' + leftPct + '%;width:' + realizedWidthPct + '%;background:' + realizedColor + ';"></div>'
@@ -1140,7 +1145,7 @@ function renderCostChart(projects) {
   projects.forEach(p => {
     const pct = p.budget > 0 ? Math.min(Math.round((p.spent / p.budget) * 100), 100) : 0;
     const over = p.budget > 0 && p.spent > p.budget;
-    h += '<div class="cost-bar"><div class="cost-label">' + p.name + '</div><div class="cost-track"><div class="cost-fill ' + (over ? 'cost-fill-red' : 'cost-fill-blue') + '" style="width:' + pct + '%"></div></div><span style="font-size:11px;color:#6b7280;width:40px;text-align:right;">' + pct + '%</span></div>';
+    h += '<div class="cost-bar"><div class="cost-label">' + esc(p.name) + '</div><div class="cost-track"><div class="cost-fill ' + (over ? 'cost-fill-red' : 'cost-fill-blue') + '" style="width:' + pct + '%"></div></div><span style="font-size:11px;color:#6b7280;width:40px;text-align:right;">' + pct + '%</span></div>';
   });
   c.innerHTML = h;
 }
@@ -1152,7 +1157,7 @@ function renderAlerts(alerts) {
   alerts.forEach(a => {
     const iconClass = a.type === 'urgent' ? 'alert-urgent' : a.type === 'alert' ? 'alert-alert' : a.type === 'warning' ? 'alert-warning' : 'alert-info';
     const icon = a.type === 'urgent' ? '!' : a.type === 'alert' ? '!' : a.type === 'warning' ? '!' : 'i';
-    h += '<div class="alert-item"><div class="alert-icon ' + iconClass + '">' + icon + '</div><div><strong>' + a.title + '</strong><br>' + a.message + '</div></div>';
+    h += '<div class="alert-item"><div class="alert-icon ' + iconClass + '">' + icon + '</div><div><strong>' + esc(a.title) + '</strong><br>' + esc(a.message) + '</div></div>';
   });
   c.innerHTML = h;
 }
@@ -1171,7 +1176,7 @@ function renderProjectsTable(projects) {
   let h = '<table class="table-projects"><thead><tr><th>Projeto</th><th>Status</th>' + (financeOk ? '<th>Orcamento</th><th>Gasto</th>' : '') + '<th>Responsavel</th></tr></thead><tbody>';
   projects.slice(0, 6).forEach(p => {
     const meta = projectStatusMeta(p.status);
-    h += '<tr><td><strong>' + p.name + '</strong></td><td><span class="' + meta.cls + '">' + meta.label + '</span></td>' + (financeOk ? '<td>' + fmtMoney(p.budget) + '</td><td>' + fmtMoney(p.spent) + '</td>' : '') + '<td>' + (p.responsibleUser ? p.responsibleUser.name : '-') + '</td></tr>';
+    h += '<tr><td><strong>' + esc(p.name) + '</strong></td><td><span class="' + meta.cls + '">' + meta.label + '</span></td>' + (financeOk ? '<td>' + fmtMoney(p.budget) + '</td><td>' + fmtMoney(p.spent) + '</td>' : '') + '<td>' + (p.responsibleUser ? esc(p.responsibleUser.name) : '-') + '</td></tr>';
   });
   h += '</tbody></table>';
   c.innerHTML = h;
@@ -1191,22 +1196,22 @@ async function loadProjetosView() {
       const meta = projectStatusMeta(p.status);
       const custoDesvio = financeOk && p.budget > 0 && p.spent > p.budget;
       const prazoDesvio = p.deadline && new Date(p.deadline) < new Date() && p.status !== 'completed';
-      h += '<tr><td><strong>' + p.name + '</strong>' + (custoDesvio ? '<span class="deviation-badge">DESVIO CUSTO</span>' : '') + (prazoDesvio ? '<span class="deviation-badge">DESVIO PRAZO</span>' : '') + '</td><td><span class="' + meta.cls + '">' + meta.label + '</span></td>'
+      h += '<tr><td><strong>' + esc(p.name) + '</strong>' + (custoDesvio ? '<span class="deviation-badge">DESVIO CUSTO</span>' : '') + (prazoDesvio ? '<span class="deviation-badge">DESVIO PRAZO</span>' : '') + '</td><td><span class="' + meta.cls + '">' + meta.label + '</span></td>'
         + (financeOk ? '<td>' + fmtMoney(p.budget) + '</td><td>' + fmtMoney(p.spent) + '</td>' : '')
-        + '<td>' + (p.responsibleUser ? p.responsibleUser.name : '-') + '</td><td>' + fmtDate(p.deadline) + '</td>'
+        + '<td>' + (p.responsibleUser ? esc(p.responsibleUser.name) : '-') + '</td><td>' + fmtDate(p.deadline) + '</td>'
         + '<td><button class="btn btn-sm btn-secondary" onclick="editProject(\'' + p.id + '\')">Editar</button> <button class="btn btn-sm btn-danger" onclick="deleteProject(\'' + p.id + '\')">Excluir</button></td></tr>';
     });
     h += '</tbody></table>';
     c.innerHTML = h;
     const sel = document.getElementById('curvaSProjectSelect');
     const prevVal = sel.value;
-    sel.innerHTML = projects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+    sel.innerHTML = projects.map(p => '<option value="' + p.id + '">' + esc(p.name) + '</option>').join('');
     if (prevVal && projects.some(p => p.id === prevVal)) sel.value = prevVal;
     renderCurvaS();
 
     const selGantt = document.getElementById('ganttActivityProjectSelect');
     const prevValGantt = selGantt.value;
-    selGantt.innerHTML = projects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+    selGantt.innerHTML = projects.map(p => '<option value="' + p.id + '">' + esc(p.name) + '</option>').join('');
     if (prevValGantt && projects.some(p => p.id === prevValGantt)) selGantt.value = prevValGantt;
     await renderActivityGantt();
   } catch (e) { c.innerHTML = '<div class="loading">Erro ao carregar projetos</div>'; }
@@ -1257,7 +1262,7 @@ async function renderActivityGantt() {
     }
 
     html += '<div class="gantt-row">'
-      + '<div class="gantt-row-label">' + (t.isMilestone ? '⭐ ' : '') + t.title + ' &middot; ' + progress + '%' + (replanEnd ? ' &middot; replanejado p/ ' + fmtDate(replanEnd) : '') + '</div>'
+      + '<div class="gantt-row-label">' + (t.isMilestone ? '⭐ ' : '') + esc(t.title) + ' &middot; ' + progress + '%' + (replanEnd ? ' &middot; replanejado p/ ' + fmtDate(replanEnd) : '') + '</div>'
       + '<div class="gantt-track-real">'
       + '<div class="gantt-planned" style="left:' + leftPct + '%;width:' + plannedWidthPct + '%;"></div>'
       + '<div class="gantt-realized" style="left:' + leftPct + '%;width:' + realizedWidthPct + '%;background:' + realizedColor + ';"></div>'
@@ -1322,7 +1327,7 @@ async function openProjectModal() {
   document.getElementById('inputSpent').value = '';
   document.getElementById('inputStatus').value = 'active';
   await loadUsersCache();
-  document.getElementById('inputResponsibleId').innerHTML = '<option value="">Sem responsavel</option>' + cachedUsers.map(u => '<option value="' + u.id + '">' + u.name + '</option>').join('');
+  document.getElementById('inputResponsibleId').innerHTML = '<option value="">Sem responsavel</option>' + cachedUsers.map(u => '<option value="' + u.id + '">' + esc(u.name) + '</option>').join('');
   document.getElementById('inputStartDate').value = '';
   document.getElementById('inputDeadline').value = '';
   document.getElementById('projectFinanceFields').classList.toggle('hidden', !canSeeFinanceUI());
@@ -1341,7 +1346,7 @@ async function editProject(id) {
   document.getElementById('inputSpent').value = p.spent || '';
   document.getElementById('inputStatus').value = p.status || 'active';
   await loadUsersCache();
-  document.getElementById('inputResponsibleId').innerHTML = '<option value="">Sem responsavel</option>' + cachedUsers.map(u => '<option value="' + u.id + '"' + (u.id === p.responsibleId ? ' selected' : '') + '>' + u.name + '</option>').join('');
+  document.getElementById('inputResponsibleId').innerHTML = '<option value="">Sem responsavel</option>' + cachedUsers.map(u => '<option value="' + u.id + '"' + (u.id === p.responsibleId ? ' selected' : '') + '>' + esc(u.name) + '</option>').join('');
   document.getElementById('inputStartDate').value = p.startDate ? p.startDate.substring(0, 10) : '';
   document.getElementById('inputDeadline').value = p.deadline ? p.deadline.substring(0, 10) : '';
   document.getElementById('projectFinanceFields').classList.toggle('hidden', !canSeeFinanceUI());
@@ -1577,7 +1582,7 @@ function confirmImportMapping() {
 
 function openComplementModal() {
   if (!cachedProjects.length) { alert('Cadastre um projeto primeiro.'); return; }
-  document.getElementById('complementProjectSelect').innerHTML = cachedProjects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+  document.getElementById('complementProjectSelect').innerHTML = cachedProjects.map(p => '<option value="' + p.id + '">' + esc(p.name) + '</option>').join('');
   document.getElementById('complementFileInput').value = '';
   document.getElementById('complementError').style.display = 'none';
   document.getElementById('complementModal').style.display = 'flex';
@@ -1656,8 +1661,8 @@ function renderKanbanColumn(status, containerId, countId, tasks) {
     const prioLabel = { low: 'Baixa', medium: 'Media', high: 'Alta' }[t.priority] || t.priority;
     const childBadge = t._childCount ? '<span class="deviation-badge" style="background:#dbeafe;color:#1e40af;">' + t._childCount + ' subitens</span>' : '';
     return '<div class="kanban-card" draggable="true" ondragstart="onKanbanDragStart(event, \'' + t.id + '\')" onclick="editTask(\'' + t.id + '\')">'
-      + '<div class="kc-title">' + (t.isMilestone ? '⭐ ' : '') + t.title + childBadge + '</div>'
-      + '<div class="kc-meta">' + (t.project ? t.project.name : '') + ' &middot; ' + prioLabel + (t.assignee ? ' &middot; ' + t.assignee.name : '') + (t.deadline ? ' &middot; ' + fmtDate(t.deadline) : '') + (canSeeFinanceUI() && t.cost ? ' &middot; ' + fmtMoney(t.cost) : '') + '</div>'
+      + '<div class="kc-title">' + (t.isMilestone ? '⭐ ' : '') + esc(t.title) + childBadge + '</div>'
+      + '<div class="kc-meta">' + (t.project ? t.project.name : '') + ' &middot; ' + prioLabel + (t.assignee ? ' &middot; ' + esc(t.assignee.name) : '') + (t.deadline ? ' &middot; ' + fmtDate(t.deadline) : '') + (canSeeFinanceUI() && t.cost ? ' &middot; ' + fmtMoney(t.cost) : '') + '</div>'
       + '<div class="cost-track" style="margin-top:6px;height:6px;"><div class="cost-fill cost-fill-blue" style="width:' + (t.progress || 0) + '%"></div></div>'
       + '</div>';
   }).join('');
@@ -1681,7 +1686,7 @@ async function onKanbanDrop(ev, newStatus) {
 
 function fillTaskProjectSelect(selectedId) {
   const sel = document.getElementById('taskProject');
-  sel.innerHTML = cachedProjects.map(p => '<option value="' + p.id + '"' + (p.id === selectedId ? ' selected' : '') + '>' + p.name + '</option>').join('');
+  sel.innerHTML = cachedProjects.map(p => '<option value="' + p.id + '"' + (p.id === selectedId ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('');
 }
 
 async function openTaskModal() {
@@ -1710,7 +1715,7 @@ async function openTaskModal() {
 function fillTaskParentSelect(projectId, selectedId) {
   const sel = document.getElementById('taskParent');
   const options = (window._cachedTasks || []).filter(t => (!projectId || t.projectId === projectId) && t.id !== editingTaskId);
-  sel.innerHTML = '<option value="">Nenhuma (tarefa de topo)</option>' + options.map(t => '<option value="' + t.id + '"' + (t.id === selectedId ? ' selected' : '') + '>' + t.title + '</option>').join('');
+  sel.innerHTML = '<option value="">Nenhuma (tarefa de topo)</option>' + options.map(t => '<option value="' + t.id + '"' + (t.id === selectedId ? ' selected' : '') + '>' + esc(t.title) + '</option>').join('');
 }
 
 async function quickAssignChild(childId, assigneeId) {
@@ -1749,9 +1754,9 @@ async function editTask(id) {
     childrenWrap.classList.remove('hidden');
     document.getElementById('taskChildrenList').innerHTML = children.map(ch => {
       const statusLabel = { pending: 'Pendente', in_progress: 'Em andamento', done: 'Concluida' }[ch.status] || ch.status;
-      const assigneeOptions = '<option value="">Sem responsavel</option>' + cachedUsers.map(u => '<option value="' + u.id + '"' + (u.id === ch.assigneeId ? ' selected' : '') + '>' + u.name + '</option>').join('');
+      const assigneeOptions = '<option value="">Sem responsavel</option>' + cachedUsers.map(u => '<option value="' + u.id + '"' + (u.id === ch.assigneeId ? ' selected' : '') + '>' + esc(u.name) + '</option>').join('');
       return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">'
-        + '<span style="flex:1;">' + ch.title + ' <span style="color:#6b7280;">(' + statusLabel + ')</span></span>'
+        + '<span style="flex:1;">' + esc(ch.title) + ' <span style="color:#6b7280;">(' + statusLabel + ')</span></span>'
         + '<select style="font-size:11px;padding:2px 4px;border:1px solid #d1d5db;border-radius:4px;max-width:130px;" onchange="quickAssignChild(\'' + ch.id + '\', this.value)">' + assigneeOptions + '</select>'
         + '<a style="color:#4f46e5;cursor:pointer;" onclick="editTask(\'' + ch.id + '\')">Abrir</a>'
         + '</div>';
@@ -1846,8 +1851,8 @@ function renderInsightPanel(containerId, insights) {
 function generateSuprimentosInsights(materials) {
   const critical = [], improvement = [], positive = [];
   materials.forEach(m => {
-    if (m.desvio) critical.push('Desvio em ' + m.name + ': saiu ' + m.saidas + ' ' + m.unit + ' contra ' + m.entradas + ' ' + m.unit + ' de entrada.');
-    else if (m.saldo > 0 && m.entradas > 0 && (m.saldo / m.entradas) < 0.1) improvement.push('Estoque baixo de ' + m.name + ': restam apenas ' + m.saldo + ' ' + m.unit + '.');
+    if (m.desvio) critical.push('Desvio em ' + esc(m.name) + ': saiu ' + m.saidas + ' ' + m.unit + ' contra ' + m.entradas + ' ' + m.unit + ' de entrada.');
+    else if (m.saldo > 0 && m.entradas > 0 && (m.saldo / m.entradas) < 0.1) improvement.push('Estoque baixo de ' + esc(m.name) + ': restam apenas ' + m.saldo + ' ' + m.unit + '.');
     else if (m.saldo > 0) positive.push(m.name + ' com estoque saudavel (' + m.saldo + ' ' + m.unit + ' disponivel).');
   });
   return { critical, improvement, positive };
@@ -1861,9 +1866,9 @@ function generateDespesasInsights(expenses, projects) {
     const totalGasto = (p.spent || 0) + projExpenses;
     if (p.budget > 0) {
       const pct = totalGasto / p.budget;
-      if (pct > 1) critical.push('Projeto ' + p.name + ' ultrapassou o orcamento (' + Math.round(pct * 100) + '% utilizado).');
-      else if (pct > 0.85) improvement.push('Projeto ' + p.name + ' esta proximo do limite do orcamento (' + Math.round(pct * 100) + '%).');
-      else positive.push('Projeto ' + p.name + ' dentro do orcamento (' + Math.round(pct * 100) + '% utilizado).');
+      if (pct > 1) critical.push('Projeto ' + esc(p.name) + ' ultrapassou o orcamento (' + Math.round(pct * 100) + '% utilizado).');
+      else if (pct > 0.85) improvement.push('Projeto ' + esc(p.name) + ' esta proximo do limite do orcamento (' + Math.round(pct * 100) + '%).');
+      else positive.push('Projeto ' + esc(p.name) + ' dentro do orcamento (' + Math.round(pct * 100) + '% utilizado).');
     }
   });
   const catTotals = {};
@@ -1880,10 +1885,10 @@ function generateRiscosInsights(risks) {
   risks.forEach(r => {
     const label = r.type === 'risco' ? 'Risco' : 'Pendencia';
     if (r.status !== 'encerrado') {
-      if (r.impact === 'alto') critical.push(label + ' de alto impacto em aberto: ' + r.title + (r.project ? ' (' + r.project.name + ')' : '') + '.');
-      else if (r.impact === 'medio') improvement.push(label + ' de impacto medio em aberto: ' + r.title + '.');
+      if (r.impact === 'alto') critical.push(label + ' de alto impacto em aberto: ' + esc(r.title) + (r.project ? ' (' + esc(r.project.name) + ')' : '') + '.');
+      else if (r.impact === 'medio') improvement.push(label + ' de impacto medio em aberto: ' + esc(r.title) + '.');
     } else {
-      positive.push(label + ' encerrado: ' + r.title + '.');
+      positive.push(label + ' encerrado: ' + esc(r.title) + '.');
     }
   });
   return { critical, improvement, positive };
@@ -1986,7 +1991,7 @@ function importBoq(input) {
       boqParsedGroups = allGroups;
       const totalItems = allGroups.reduce((s, g) => s + g.items.length, 0);
       const totalCost = allGroups.reduce((s, g) => s + g.items.reduce((s2, i) => s2 + i.cost, 0), 0);
-      document.getElementById('boqProjectSelect').innerHTML = cachedProjects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+      document.getElementById('boqProjectSelect').innerHTML = cachedProjects.map(p => '<option value="' + p.id + '">' + esc(p.name) + '</option>').join('');
       const summary = document.getElementById('boqSummary');
       summary.innerHTML = '<div class="card" style="margin-top:12px;background:#f9fafb;">'
         + '<p style="font-size:13px;margin-bottom:4px;"><strong>' + allGroups.length + '</strong> tarefa(s) macro (setores) serao criadas, contendo <strong>' + totalItems + '</strong> subitem(ns) de servico ao todo.</p>'
@@ -2061,7 +2066,7 @@ async function loadMateriaisTable() {
     if (!materials.length) { c.innerHTML = '<div class="loading">Nenhum material cadastrado</div>'; return; }
     let h = '<table class="table-projects"><thead><tr><th>Material</th><th>Unidade</th><th>Entradas</th><th>Saidas</th><th>Saldo</th><th>Acoes</th></tr></thead><tbody>';
     materials.forEach(m => {
-      h += '<tr><td><strong>' + m.name + '</strong>' + (m.desvio ? '<span class="deviation-badge">DESVIO</span>' : '') + '</td><td>' + m.unit + '</td><td>' + m.entradas + '</td><td>' + m.saidas + '</td><td>' + m.saldo + '</td>'
+      h += '<tr><td><strong>' + esc(m.name) + '</strong>' + (m.desvio ? '<span class="deviation-badge">DESVIO</span>' : '') + '</td><td>' + m.unit + '</td><td>' + m.entradas + '</td><td>' + m.saidas + '</td><td>' + m.saldo + '</td>'
         + '<td><button class="btn btn-sm btn-danger" onclick="deleteMaterial(\'' + m.id + '\')">Excluir</button></td></tr>';
     });
     h += '</tbody></table>';
@@ -2077,7 +2082,7 @@ async function loadMovimentacoesTable() {
     if (!movements.length) { c.innerHTML = '<div class="loading">Nenhuma movimentacao registrada</div>'; return; }
     let h = '<table class="table-projects"><thead><tr><th>Data</th><th>Material</th><th>Tipo</th><th>Quantidade</th><th>Projeto</th><th>Responsavel</th><th>Acoes</th></tr></thead><tbody>';
     movements.forEach(m => {
-      h += '<tr><td>' + fmtDate(m.createdAt) + '</td><td>' + m.material.name + '</td><td>' + (m.type === 'entrada' ? 'Entrada' : 'Saida') + '</td><td>' + m.quantity + ' ' + m.material.unit + '</td><td>' + (m.project ? m.project.name : '-') + '</td><td>' + (m.responsible || '-') + '</td>'
+      h += '<tr><td>' + fmtDate(m.createdAt) + '</td><td>' + esc(m.material.name) + '</td><td>' + (m.type === 'entrada' ? 'Entrada' : 'Saida') + '</td><td>' + m.quantity + ' ' + m.material.unit + '</td><td>' + (m.project ? m.project.name : '-') + '</td><td>' + (m.responsible || '-') + '</td>'
         + '<td><button class="btn btn-sm btn-danger" onclick="deleteMovement(\'' + m.id + '\')">Excluir</button></td></tr>';
     });
     h += '</tbody></table>';
@@ -2121,8 +2126,8 @@ async function openMovementModal() {
     cachedProjects = await res.json();
   }
   if (!cachedMaterials.length) { alert('Cadastre um material primeiro.'); return; }
-  document.getElementById('movementMaterial').innerHTML = cachedMaterials.map(m => '<option value="' + m.id + '">' + m.name + ' (' + m.unit + ')</option>').join('');
-  document.getElementById('movementProject').innerHTML = '<option value="">Nenhum</option>' + cachedProjects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+  document.getElementById('movementMaterial').innerHTML = cachedMaterials.map(m => '<option value="' + m.id + '">' + esc(m.name) + ' (' + m.unit + ')</option>').join('');
+  document.getElementById('movementProject').innerHTML = '<option value="">Nenhum</option>' + cachedProjects.map(p => '<option value="' + p.id + '">' + esc(p.name) + '</option>').join('');
   document.getElementById('movementType').value = 'entrada';
   document.getElementById('movementQty').value = '';
   document.getElementById('movementValue').value = '';
@@ -2173,7 +2178,7 @@ async function loadDespesasView() {
     if (!expenses.length) { c.innerHTML = '<div class="loading">Nenhuma despesa lancada</div>'; return; }
     let h = '<table class="table-projects"><thead><tr><th>Data</th><th>Descricao</th><th>Categoria</th><th>Valor</th><th>Projeto</th><th>Responsavel</th><th>Acoes</th></tr></thead><tbody>';
     expenses.forEach(e => {
-      h += '<tr><td>' + fmtDate(e.date) + '</td><td>' + e.description + '</td><td>' + (e.category || '-') + '</td><td>' + fmtMoney(e.amount) + '</td><td>' + (e.project ? e.project.name : '-') + '</td><td>' + (e.responsible || '-') + '</td>'
+      h += '<tr><td>' + fmtDate(e.date) + '</td><td>' + esc(e.description) + '</td><td>' + (e.category || '-') + '</td><td>' + fmtMoney(e.amount) + '</td><td>' + (e.project ? e.project.name : '-') + '</td><td>' + (e.responsible || '-') + '</td>'
         + '<td><button class="btn btn-sm btn-danger" onclick="deleteExpense(\'' + e.id + '\')">Excluir</button></td></tr>';
     });
     h += '</tbody></table>';
@@ -2182,7 +2187,7 @@ async function loadDespesasView() {
 }
 
 function openExpenseModal() {
-  document.getElementById('expenseProject').innerHTML = cachedProjects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+  document.getElementById('expenseProject').innerHTML = cachedProjects.map(p => '<option value="' + p.id + '">' + esc(p.name) + '</option>').join('');
   document.getElementById('expenseDesc').value = '';
   document.getElementById('expenseCategory').value = '';
   document.getElementById('expenseAmount').value = '';
@@ -2229,7 +2234,7 @@ async function loadRiscosView() {
     if (!risks.length) { c.innerHTML = '<div class="loading">Nenhum risco ou pendencia registrado</div>'; return; }
     let h = '<table class="table-projects"><thead><tr><th>Tipo</th><th>Titulo</th><th>Projeto</th><th>Probabilidade</th><th>Impacto</th><th>Status</th><th>Acoes</th></tr></thead><tbody>';
     risks.forEach(r => {
-      h += '<tr><td>' + (r.type === 'risco' ? 'Risco' : 'Pendencia') + '</td><td><strong>' + r.title + '</strong></td><td>' + (r.project ? r.project.name : '-') + '</td><td>' + (r.probability || '-') + '</td><td>' + (r.impact || '-') + '</td><td>' + r.status + '</td>'
+      h += '<tr><td>' + (r.type === 'risco' ? 'Risco' : 'Pendencia') + '</td><td><strong>' + esc(r.title) + '</strong></td><td>' + (r.project ? r.project.name : '-') + '</td><td>' + (r.probability || '-') + '</td><td>' + (r.impact || '-') + '</td><td>' + r.status + '</td>'
         + '<td><button class="btn btn-sm btn-secondary" onclick="cycleRiskStatus(\'' + r.id + '\', \'' + r.status + '\')">Avancar Status</button> <button class="btn btn-sm btn-danger" onclick="deleteRisk(\'' + r.id + '\')">Excluir</button></td></tr>';
     });
     h += '</tbody></table>';
@@ -2238,7 +2243,7 @@ async function loadRiscosView() {
 }
 
 function openRiskModal() {
-  document.getElementById('riskProject').innerHTML = cachedProjects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+  document.getElementById('riskProject').innerHTML = cachedProjects.map(p => '<option value="' + p.id + '">' + esc(p.name) + '</option>').join('');
   document.getElementById('riskType').value = 'risco';
   document.getElementById('riskTitle').value = '';
   document.getElementById('riskDesc').value = '';
@@ -2290,7 +2295,7 @@ async function loadEquipeView() {
     users.forEach(u => {
       const isSelf = currentUser && u.id === currentUser.id;
       const roleLabel = u.role === 'admin' ? 'Administrador' : u.role === 'coordenador' ? 'Coordenador' : 'Engenheiro';
-      h += '<tr><td><strong>' + u.name + '</strong></td><td>' + u.email + '</td><td>' + roleLabel + '</td>'
+      h += '<tr><td><strong>' + esc(u.name) + '</strong></td><td>' + esc(u.email) + '</td><td>' + roleLabel + '</td>'
         + '<td>' + (isSelf ? '(voce)' : '<button class="btn btn-sm btn-danger" onclick="deleteUser(\'' + u.id + '\')">Remover</button>') + '</td></tr>';
     });
     h += '</tbody></table>';
