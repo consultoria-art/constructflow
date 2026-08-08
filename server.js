@@ -197,6 +197,14 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    if (req.url === '/termos.html' || req.url === '/privacidade.html') {
+      return fs.readFile(path.join(__dirname, req.url.substring(1)), (err, data) => {
+        if (err) return sendJSON(res, 404, { error: 'Pagina nao encontrada' });
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.end(data);
+      });
+    }
+
     if (req.url === '/api/v1/health' && req.method === 'GET') {
       return sendJSON(res, 200, { status: 'ok' });
     }
