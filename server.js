@@ -6,7 +6,12 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || 'constructflow-secret';
+const crypto = require('crypto');
+let JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  JWT_SECRET = crypto.randomBytes(48).toString('hex');
+  console.warn('AVISO DE SEGURANCA: variavel de ambiente JWT_SECRET nao configurada. Um segredo aleatorio foi gerado automaticamente para esta execucao, mas todos os usuarios serao desconectados a cada reinicio do servidor. Configure JWT_SECRET no Railway com um valor fixo e aleatorio o quanto antes.');
+}
 const stripe = process.env.STRIPE_SECRET_KEY ? require('stripe')(process.env.STRIPE_SECRET_KEY) : null;
 const APP_URL = process.env.APP_URL || '';
 
@@ -15,6 +20,36 @@ const PLANS = {
   pro: { name: 'Pro', price: 197, description: 'Ate 15 projetos ativos, ate 20 usuarios', priceId: process.env.STRIPE_PRICE_PRO },
   enterprise: { name: 'Enterprise', price: 397, description: 'Projetos e usuarios ilimitados', priceId: process.env.STRIPE_PRICE_ENTERPRISE }
 };
+
+const loginAttempts = new Map();
+const MAX_ATTEMPTS = 5;
+const WINDOW_MS = 15 * 60 * 1000;
+
+function checkRateLimit(key) {
+  const now = Date.now();
+  const entry = loginAttempts.get(key);
+  if (!entry) return { blocked: false };
+  if (now - entry.firstAttempt > WINDOW_MS) { loginAttempts.delete(key); return { blocked: false }; }
+  if (entry.count >= MAX_ATTEMPTS) {
+    const minutesLeft = Math.ceil((WINDOW_MS - (now - entry.firstAttempt)) / 60000);
+    return { blocked: true, minutesLeft };
+  }
+  return { blocked: false };
+}
+
+function recordFailedAttempt(key) {
+  const now = Date.now();
+  const entry = loginAttempts.get(key);
+  if (!entry || now - entry.firstAttempt > WINDOW_MS) {
+    loginAttempts.set(key, { count: 1, firstAttempt: now });
+  } else {
+    entry.count++;
+  }
+}
+
+function clearAttempts(key) {
+  loginAttempts.delete(key);
+}
 
 function parseRawBody(req) {
   return new Promise((resolve) => {
@@ -210,13 +245,16 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.url === '/api/v1/auth/signup' && req.method === 'POST') {
+      const ipKey = 'signup:' + (req.socket.remoteAddress || 'unknown');
+      const rlSignup = checkRateLimit(ipKey);
+      if (rlSignup.blocked) return sendJSON(res, 429, { error: 'Muitas tentativas de cadastro. Tente novamente em ' + rlSignup.minutesLeft + ' minuto(s).' });
       const { name, email, password, organizationName } = await parseBody(req);
       if (!name || !email || !password || !organizationName)
         return sendJSON(res, 400, { error: 'Todos os campos sao obrigatorios' });
       if (password.length < 6)
         return sendJSON(res, 400, { error: 'Senha deve ter no minimo 6 caracteres' });
       const exist = await prisma.user.findUnique({ where: { email } });
-      if (exist) return sendJSON(res, 400, { error: 'Email ja cadastrado' });
+      if (exist) { recordFailedAttempt(ipKey); return sendJSON(res, 400, { error: 'Email ja cadastrado' }); }
       const slug = organizationName.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 40);
       const hash = await bcrypt.hash(password, 10);
       const org = await prisma.organization.create({
@@ -236,9 +274,13 @@ const server = http.createServer(async (req, res) => {
     if (req.url === '/api/v1/auth/login' && req.method === 'POST') {
       const { email, password } = await parseBody(req);
       if (!email || !password) return sendJSON(res, 400, { error: 'Email e senha obrigatorios' });
+      const rateLimitKey = String(email).toLowerCase();
+      const rl = checkRateLimit(rateLimitKey);
+      if (rl.blocked) return sendJSON(res, 429, { error: 'Muitas tentativas de login. Tente novamente em ' + rl.minutesLeft + ' minuto(s).' });
       const user = await prisma.user.findUnique({ where: { email }, include: { organization: true } });
-      if (!user) return sendJSON(res, 401, { error: 'Email ou senha invalidos' });
-      if (!await bcrypt.compare(password, user.passwordHash)) return sendJSON(res, 401, { error: 'Email ou senha invalidos' });
+      if (!user) { recordFailedAttempt(rateLimitKey); return sendJSON(res, 401, { error: 'Email ou senha invalidos' }); }
+      if (!await bcrypt.compare(password, user.passwordHash)) { recordFailedAttempt(rateLimitKey); return sendJSON(res, 401, { error: 'Email ou senha invalidos' }); }
+      clearAttempts(rateLimitKey);
       const token = jwt.sign({ userId: user.id, email, organizationId: user.organizationId, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
       return sendJSON(res, 200, { token, user: { id: user.id, name: user.name, email: user.email, role: user.role }, organization: { id: user.organization.id, name: user.organization.name, slug: user.organization.slug } });
     }
