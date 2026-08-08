@@ -1379,7 +1379,7 @@ async function saveProject() {
       if (result.error) {
         alert('Projeto salvo, mas houve erro ao ler a planilha: ' + result.error);
       } else {
-        let msg = 'Projeto salvo. Planilha distribuida automaticamente: ' + result.tasksCreated + ' tarefa(s), ' + result.expensesCreated + ' despesa(s), ' + result.risksCreated + ' risco(s)/pendencia(s).';
+        let msg = 'Projeto salvo. Planilha distribuida automaticamente: ' + result.groupsCreated + ' grupo(s) de servico com ' + result.tasksCreated + ' subitem(ns), ' + result.expensesCreated + ' despesa(s), ' + result.risksCreated + ' risco(s)/pendencia(s).';
         if (result.unrecognized.length) msg += ' Abas nao reconhecidas (ignoradas): ' + result.unrecognized.join(', ') + '.';
         alert(msg);
       }
@@ -1470,13 +1470,14 @@ const RISK_FIELDS = [
 
 function detectSheetTarget(sheetName, headers) {
   const n = normKey(sheetName);
-  if (['tarefas', 'tasks', 'atividades', 'servicos', 'cronograma'].some(s => n.indexOf(s) > -1)) return 'tasks';
+  if (['tarefas', 'tasks', 'atividades', 'servicos', 'cronograma', 'montagem', 'materiais', 'maodeobra'].some(s => n.indexOf(s) > -1)) return 'tasks';
   if (['despesas', 'expenses', 'custos', 'gastos', 'financeiro'].some(s => n.indexOf(s) > -1)) return 'expenses';
   if (['riscos', 'risks', 'pendencias'].some(s => n.indexOf(s) > -1)) return 'risks';
   const normHeaders = headers.map(normKey);
-  if (normHeaders.some(h => ['titulo', 'title', 'tarefa', 'atividade'].includes(h)) && normHeaders.some(h => ['status', 'prioridade', 'priority'].includes(h))) return 'tasks';
-  if (normHeaders.some(h => ['valor', 'amount', 'custo'].includes(h))) return 'expenses';
-  if (normHeaders.some(h => ['probabilidade', 'impacto', 'impact', 'probability'].includes(h))) return 'risks';
+  const hasAny = (keys) => normHeaders.some(h => keys.some(k => h === k || h.indexOf(k) > -1));
+  if (hasAny(['probabilidade', 'impacto', 'impact', 'probability'])) return 'risks';
+  if (hasAny(['titulo', 'title', 'tarefa', 'atividade', 'descricao', 'servico']) && hasAny(['qtde', 'qtd', 'quantidade', 'und', 'unidade', 'valor', 'status', 'prioridade', 'priority'])) return 'tasks';
+  if (hasAny(['valor', 'amount', 'custo'])) return 'expenses';
   return null;
 }
 
@@ -1498,40 +1499,79 @@ function transformRowsGeneric(rows, fieldDefs) {
   });
 }
 
+function genericFindHeaderRow(aoa) {
+  const combined = [...new Set([].concat(
+    TASK_FIELDS.flatMap(f => f.synonyms),
+    EXPENSE_FIELDS.flatMap(f => f.synonyms),
+    RISK_FIELDS.flatMap(f => f.synonyms),
+    ['item', 'qtde', 'qtd', 'quantidade', 'und', 'unid', 'unidade', 'valorunit', 'valortotal']
+  ))];
+  let bestRow = -1, bestScore = 0;
+  const limit = Math.min(aoa.length, 15);
+  for (let i = 0; i < limit; i++) {
+    const row = aoa[i];
+    if (!row) continue;
+    let score = 0;
+    row.forEach(cell => {
+      const n = normKey(cell);
+      if (!n) return;
+      if (combined.some(k => n === k || n.indexOf(k) > -1)) score++;
+    });
+    if (score > bestScore) { bestScore = score; bestRow = i; }
+  }
+  return bestScore >= 2 ? bestRow : -1;
+}
+
 async function processMasterSpreadsheet(projectId, file) {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
         const wb = XLSX.read(e.target.result, { type: 'array' });
-        let tasksCreated = 0, expensesCreated = 0, risksCreated = 0;
+        let tasksCreated = 0, groupsCreated = 0, expensesCreated = 0, risksCreated = 0;
         const unrecognized = [];
         for (const sheetName of wb.SheetNames) {
           const sheet = wb.Sheets[sheetName];
-          const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-          if (!rows.length) continue;
-          const headers = Object.keys(rows[0]);
-          const target = detectSheetTarget(sheetName, headers);
+          const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+          if (!aoa.length) continue;
+          const headerRowIndex = genericFindHeaderRow(aoa);
+          if (headerRowIndex === -1) { unrecognized.push(sheetName); continue; }
+          const headerRow = (aoa[headerRowIndex] || []).map(h => String(h || '').trim()).filter(h => h);
+          const target = detectSheetTarget(sheetName, headerRow);
+
           if (target === 'tasks') {
-            const normalized = transformRowsGeneric(rows, TASK_FIELDS).filter(o => o.title).map(o => ({ ...o, projectId }));
-            const res = await fetch(API + '/api/v1/tasks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: normalized }) });
-            const d = await res.json();
-            tasksCreated += d.created || 0;
-          } else if (target === 'expenses') {
-            const normalized = transformRowsGeneric(rows, EXPENSE_FIELDS).filter(o => o.description && o.amount).map(o => ({ ...o, projectId }));
-            const res = await fetch(API + '/api/v1/expenses/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: normalized }) });
-            const d = await res.json();
-            expensesCreated += d.created || 0;
-          } else if (target === 'risks') {
-            const normalized = transformRowsGeneric(rows, RISK_FIELDS).filter(o => o.title).map(o => ({ ...o, projectId }));
-            const res = await fetch(API + '/api/v1/risks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: normalized }) });
-            const d = await res.json();
-            risksCreated += d.created || 0;
+            const result = boqParseSheetGrouped(sheetName, aoa);
+            if (!result.recognized || !result.groups.length) { unrecognized.push(sheetName); continue; }
+            for (const group of result.groups) {
+              const groupCost = group.items.reduce((s, i) => s + i.cost, 0);
+              const res = await fetch(API + '/api/v1/tasks', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ title: group.title, description: 'Grupo importado da planilha (' + group.items.length + ' subitens)', status: 'pending', priority: 'medium', cost: groupCost, projectId }) });
+              const createdGroup = await res.json();
+              if (!res.ok) continue;
+              groupsCreated++;
+              const childRows = group.items.map(item => ({ ...item, projectId, parentId: createdGroup.id }));
+              const res2 = await fetch(API + '/api/v1/tasks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: childRows }) });
+              const d2 = await res2.json();
+              tasksCreated += d2.created || 0;
+            }
+          } else if (target === 'expenses' || target === 'risks') {
+            const rows = XLSX.utils.sheet_to_json(sheet, { range: headerRowIndex, defval: '' });
+            if (!rows.length) { unrecognized.push(sheetName); continue; }
+            if (target === 'expenses') {
+              const normalized = transformRowsGeneric(rows, EXPENSE_FIELDS).filter(o => o.description && o.amount).map(o => ({ ...o, projectId }));
+              const res = await fetch(API + '/api/v1/expenses/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: normalized }) });
+              const d = await res.json();
+              expensesCreated += d.created || 0;
+            } else {
+              const normalized = transformRowsGeneric(rows, RISK_FIELDS).filter(o => o.title).map(o => ({ ...o, projectId }));
+              const res = await fetch(API + '/api/v1/risks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: normalized }) });
+              const d = await res.json();
+              risksCreated += d.created || 0;
+            }
           } else {
             unrecognized.push(sheetName);
           }
         }
-        resolve({ tasksCreated, expensesCreated, risksCreated, unrecognized });
+        resolve({ tasksCreated, groupsCreated, expensesCreated, risksCreated, unrecognized });
       } catch (err) { resolve({ error: err.message }); }
     };
     reader.readAsArrayBuffer(file);
@@ -1607,7 +1647,7 @@ async function confirmComplement() {
     return;
   }
   closeModal('complementModal');
-  let msg = 'Projeto complementado: ' + result.tasksCreated + ' tarefa(s), ' + result.expensesCreated + ' despesa(s), ' + result.risksCreated + ' risco(s)/pendencia(s).';
+  let msg = 'Projeto complementado: ' + result.groupsCreated + ' grupo(s) de servico com ' + result.tasksCreated + ' subitem(ns), ' + result.expensesCreated + ' despesa(s), ' + result.risksCreated + ' risco(s)/pendencia(s).';
   if (result.unrecognized.length) msg += ' Abas nao reconhecidas (ignoradas): ' + result.unrecognized.join(', ') + '.';
   alert(msg);
   loadProjetosView();
