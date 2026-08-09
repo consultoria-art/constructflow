@@ -1225,13 +1225,44 @@ async function renderActivityGantt() {
   const res = await fetch(API + '/api/v1/tasks', { headers: apiHeaders() });
   const allTasks = await res.json();
   window._cachedTasks = allTasks;
-  const tasks = allTasks.filter(t => t.projectId === projectId && t.startDate && t.deadline);
 
-  if (!tasks.length) { container.innerHTML = '<div class="loading">Cadastre Data de Inicio e Prazo nas tarefas deste projeto para ver o cronograma</div>'; return; }
+  const activities = allTasks.filter(t => t.projectId === projectId && t.type === 'atividade');
+  if (!activities.length) { container.innerHTML = '<div class="loading">Nenhuma atividade de obra importada para este projeto ainda. Use "Complementar Projeto" ou "Importar Lista de Servicos" em Tarefas.</div>'; return; }
+
+  const withDates = activities.filter(t => t.startDate && t.deadline);
+  const withoutDates = activities.filter(t => !t.startDate || !t.deadline);
+
+  const parentTitle = (t) => {
+    if (!t.parentId) return null;
+    const p = allTasks.find(x => x.id === t.parentId);
+    return p ? p.title : null;
+  };
+
+  let html = '';
+
+  if (withoutDates.length) {
+    html += '<div class="card" style="background:#fef9c3;margin-bottom:16px;">'
+      + '<h3 style="margin-bottom:8px;">⚠️ ' + withoutDates.length + ' atividade(s) ainda sem data planejada</h3>'
+      + '<div style="max-height:220px;overflow-y:auto;">'
+      + withoutDates.map(t => {
+          const cat = parentTitle(t);
+          return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #fef3c7;font-size:13px;">'
+            + '<span>' + (cat ? '<span style="color:#92400e;">[' + esc(cat) + ']</span> ' : '') + esc(t.title) + '</span>'
+            + '<button class="btn btn-sm btn-primary" onclick="editTask(\'' + t.id + '\')">Planejar datas</button>'
+            + '</div>';
+        }).join('')
+      + '</div></div>';
+  }
+
+  if (!withDates.length) {
+    html += '<div class="loading">Assim que as atividades acima tiverem data de inicio e prazo, o Gantt aparece aqui.</div>';
+    container.innerHTML = html;
+    return;
+  }
 
   const now = new Date();
-  const starts = tasks.map(t => new Date(t.startDate));
-  const ends = tasks.map(t => new Date(t.replannedDeadline || t.deadline));
+  const starts = withDates.map(t => new Date(t.startDate));
+  const ends = withDates.map(t => new Date(t.replannedDeadline || t.deadline));
   let minDate = new Date(Math.min.apply(null, starts.concat([now])));
   let maxDate = new Date(Math.max.apply(null, ends.concat([now])));
   minDate = new Date(minDate.getTime() - 3 * 24 * 3600 * 1000);
@@ -1239,35 +1270,47 @@ async function renderActivityGantt() {
   const totalMs = maxDate - minDate;
   const todayPct = ((now - minDate) / totalMs) * 100;
 
-  let html = '<div class="gantt-scale-labels"><span>' + minDate.toLocaleDateString('pt-BR') + '</span><span>' + maxDate.toLocaleDateString('pt-BR') + '</span></div>';
+  // Agrupa por categoria (titulo da tarefa-pai, ex: "TERRAPLANAGEM")
+  const groups = {};
+  const order = [];
+  withDates.forEach(t => {
+    const cat = parentTitle(t) || 'Sem categoria';
+    if (!groups[cat]) { groups[cat] = []; order.push(cat); }
+    groups[cat].push(t);
+  });
+
+  html += '<div class="gantt-scale-labels"><span>' + minDate.toLocaleDateString('pt-BR') + '</span><span>' + maxDate.toLocaleDateString('pt-BR') + '</span></div>';
   html += '<div class="gantt-real">';
   html += '<div class="gantt-today-line" style="left:' + todayPct + '%"><span class="gantt-today-label">Hoje</span></div>';
 
-  tasks.forEach(t => {
-    const s = new Date(t.startDate);
-    const originalEnd = new Date(t.deadline);
-    const replanEnd = t.replannedDeadline ? new Date(t.replannedDeadline) : null;
-    const leftPct = ((s - minDate) / totalMs) * 100;
-    const plannedWidthPct = Math.max(1, ((originalEnd - s) / totalMs) * 100);
-    const progress = t.progress || 0;
-    const isLate = (originalEnd < now && progress < 100 && !replanEnd) || (replanEnd && replanEnd < now && progress < 100);
-    const realizedColor = isLate ? '#ef4444' : '#22c55e';
-    const realizedWidthPct = plannedWidthPct * (progress / 100);
+  order.forEach(cat => {
+    html += '<div style="font-size:12px;font-weight:700;color:#374151;margin:14px 0 6px;text-transform:uppercase;">' + esc(cat) + '</div>';
+    groups[cat].forEach(t => {
+      const s = new Date(t.startDate);
+      const originalEnd = new Date(t.deadline);
+      const replanEnd = t.replannedDeadline ? new Date(t.replannedDeadline) : null;
+      const leftPct = ((s - minDate) / totalMs) * 100;
+      const plannedWidthPct = Math.max(1, ((originalEnd - s) / totalMs) * 100);
+      const progress = t.progress || 0;
+      const isLate = (originalEnd < now && progress < 100 && !replanEnd) || (replanEnd && replanEnd < now && progress < 100);
+      const realizedColor = isLate ? '#ef4444' : '#22c55e';
+      const realizedWidthPct = plannedWidthPct * (progress / 100);
 
-    let replanBarHtml = '';
-    if (replanEnd) {
-      const replanLeftPct = ((originalEnd - minDate) / totalMs) * 100;
-      const replanWidthPct = Math.max(1, ((replanEnd - originalEnd) / totalMs) * 100);
-      replanBarHtml = '<div class="gantt-realized" style="left:' + replanLeftPct + '%;width:' + replanWidthPct + '%;background:#a855f7;top:0;"></div>';
-    }
+      let replanBarHtml = '';
+      if (replanEnd) {
+        const replanLeftPct = ((originalEnd - minDate) / totalMs) * 100;
+        const replanWidthPct = Math.max(1, ((replanEnd - originalEnd) / totalMs) * 100);
+        replanBarHtml = '<div class="gantt-realized" style="left:' + replanLeftPct + '%;width:' + replanWidthPct + '%;background:#a855f7;top:0;"></div>';
+      }
 
-    html += '<div class="gantt-row">'
-      + '<div class="gantt-row-label">' + (t.isMilestone ? '⭐ ' : '') + esc(t.title) + ' &middot; ' + progress + '%' + (replanEnd ? ' &middot; replanejado p/ ' + fmtDate(replanEnd) : '') + '</div>'
-      + '<div class="gantt-track-real">'
-      + '<div class="gantt-planned" style="left:' + leftPct + '%;width:' + plannedWidthPct + '%;"></div>'
-      + '<div class="gantt-realized" style="left:' + leftPct + '%;width:' + realizedWidthPct + '%;background:' + realizedColor + ';"></div>'
-      + replanBarHtml
-      + '</div></div>';
+      html += '<div class="gantt-row" style="cursor:pointer;" onclick="editTask(\'' + t.id + '\')">'
+        + '<div class="gantt-row-label">' + (t.isMilestone ? '⭐ ' : '') + esc(t.title) + ' &middot; ' + progress + '%' + (replanEnd ? ' &middot; replanejado p/ ' + fmtDate(replanEnd) : '') + '</div>'
+        + '<div class="gantt-track-real">'
+        + '<div class="gantt-planned" style="left:' + leftPct + '%;width:' + plannedWidthPct + '%;"></div>'
+        + '<div class="gantt-realized" style="left:' + leftPct + '%;width:' + realizedWidthPct + '%;background:' + realizedColor + ';"></div>'
+        + replanBarHtml
+        + '</div></div>';
+    });
   });
 
   html += '</div>';
@@ -1544,11 +1587,11 @@ async function processMasterSpreadsheet(projectId, file) {
             if (!result.recognized || !result.groups.length) { unrecognized.push(sheetName); continue; }
             for (const group of result.groups) {
               const groupCost = group.items.reduce((s, i) => s + i.cost, 0);
-              const res = await fetch(API + '/api/v1/tasks', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ title: group.title, description: 'Grupo importado da planilha (' + group.items.length + ' subitens)', status: 'pending', priority: 'medium', cost: groupCost, projectId }) });
+              const res = await fetch(API + '/api/v1/tasks', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ title: group.title, description: 'Grupo importado da planilha (' + group.items.length + ' subitens)', type: 'atividade', status: 'pending', priority: 'medium', cost: groupCost, projectId }) });
               const createdGroup = await res.json();
               if (!res.ok) continue;
               groupsCreated++;
-              const childRows = group.items.map(item => ({ ...item, projectId, parentId: createdGroup.id }));
+              const childRows = group.items.map(item => ({ ...item, type: 'atividade', projectId, parentId: createdGroup.id }));
               const res2 = await fetch(API + '/api/v1/tasks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: childRows }) });
               const d2 = await res2.json();
               tasksCreated += d2.created || 0;
@@ -1670,9 +1713,10 @@ async function loadKanban() {
       fetch(API + '/api/v1/tasks', { headers: apiHeaders() }),
       fetch(API + '/api/v1/projects', { headers: apiHeaders() })
     ]);
-    const allTasks = await taskRes.json();
+    const allTasksRaw = await taskRes.json();
     cachedProjects = await projRes.json();
-    window._cachedTasks = allTasks;
+    const allTasks = allTasksRaw.filter(t => t.type !== 'atividade');
+    window._cachedTasks = allTasksRaw;
 
     const searchRaw = (document.getElementById('taskSearchInput') || {}).value || '';
     const search = normKey(searchRaw);
@@ -2062,11 +2106,11 @@ async function confirmBoqImport() {
     const childRows = [];
     for (const group of boqParsedGroups) {
       const groupCost = group.items.reduce((s, i) => s + i.cost, 0);
-      const res = await fetch(API + '/api/v1/tasks', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ title: group.title, description: 'Grupo importado da planilha de servicos (' + group.items.length + ' subitens)', status: 'pending', priority: 'medium', cost: groupCost, projectId }) });
+      const res = await fetch(API + '/api/v1/tasks', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ title: group.title, description: 'Grupo importado da planilha de servicos (' + group.items.length + ' subitens)', type: 'atividade', status: 'pending', priority: 'medium', cost: groupCost, projectId }) });
       const createdGroup = await res.json();
       if (!res.ok) continue;
       groupsCreated++;
-      group.items.forEach(item => childRows.push({ ...item, projectId, parentId: createdGroup.id }));
+      group.items.forEach(item => childRows.push({ ...item, type: 'atividade', projectId, parentId: createdGroup.id }));
     }
     if (childRows.length) {
       const res2 = await fetch(API + '/api/v1/tasks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: childRows }) });
