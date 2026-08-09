@@ -520,6 +520,7 @@ const server = http.createServer(async (req, res) => {
           data: {
             title: String(r.title),
             description: r.description ? String(r.description) : null,
+            type: r.type === 'atividade' ? 'atividade' : 'tarefa',
             status: r.status || 'pending',
             priority: r.priority || 'medium',
             assigneeId,
