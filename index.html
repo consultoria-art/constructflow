@@ -544,6 +544,10 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <input id="taskDeadline" type="date" class="input">
 <label class="field">Nova data replanejada (preencha so se atrasou e precisa replanejar)</label>
 <input id="taskReplannedDeadline" type="date" class="input">
+<label class="field">Data real de inicio (realizado)</label>
+<input id="taskActualStartDate" type="date" class="input">
+<label class="field">Data real de conclusao (realizado)</label>
+<input id="taskActualEndDate" type="date" class="input">
 <label class="field">Avanco fisico (%)</label>
 <input id="taskProgress" type="number" min="0" max="100" class="input" value="0">
 <label class="field">Horas trabalhadas</label>
@@ -1348,7 +1352,9 @@ async function renderActivityGantt() {
   const allTasks = await res.json();
   window._cachedTasks = allTasks;
 
-  const activities = allTasks.filter(t => t.projectId === projectId && t.type === 'atividade');
+  const activitiesAll = allTasks.filter(t => t.projectId === projectId && t.type === 'atividade');
+  const parentIds = new Set(activitiesAll.filter(t => t.parentId).map(t => t.parentId));
+  const activities = activitiesAll.filter(t => !parentIds.has(t.id));
   if (!activities.length) { container.innerHTML = '<div class="loading">Nenhuma atividade de obra importada para este projeto ainda. Use "Complementar Projeto" ou "Importar Lista de Servicos" em Tarefas.</div>'; return; }
 
   const withDates = activities.filter(t => t.startDate && t.deadline);
@@ -1416,7 +1422,18 @@ async function renderActivityGantt() {
       const progress = t.progress || 0;
       const isLate = (originalEnd < now && progress < 100 && !replanEnd) || (replanEnd && replanEnd < now && progress < 100);
       const realizedColor = isLate ? '#ef4444' : '#22c55e';
-      const realizedWidthPct = plannedWidthPct * (progress / 100);
+
+      let realizedLeftPct, realizedWidthPct;
+      const hasActualDates = t.actualStartDate;
+      if (hasActualDates) {
+        const actualStart = new Date(t.actualStartDate);
+        const actualEnd = t.actualEndDate ? new Date(t.actualEndDate) : now;
+        realizedLeftPct = ((actualStart - minDate) / totalMs) * 100;
+        realizedWidthPct = Math.max(0.5, ((actualEnd - actualStart) / totalMs) * 100);
+      } else {
+        realizedLeftPct = leftPct;
+        realizedWidthPct = plannedWidthPct * (progress / 100);
+      }
 
       let replanBarHtml = '';
       if (replanEnd) {
@@ -1425,11 +1442,12 @@ async function renderActivityGantt() {
         replanBarHtml = '<div class="gantt-realized" style="left:' + replanLeftPct + '%;width:' + replanWidthPct + '%;background:#a855f7;top:0;"></div>';
       }
 
+      const realizadoLabel = hasActualDates ? (t.actualEndDate ? 'concluido em ' + fmtDate(t.actualEndDate) : 'em execucao desde ' + fmtDate(t.actualStartDate)) : progress + '%';
       html += '<div class="gantt-row" style="cursor:pointer;" onclick="editTask(\'' + t.id + '\')">'
-        + '<div class="gantt-row-label">' + (t.isMilestone ? '⭐ ' : '') + esc(t.title) + ' &middot; ' + progress + '%' + (replanEnd ? ' &middot; replanejado p/ ' + fmtDate(replanEnd) : '') + '</div>'
+        + '<div class="gantt-row-label">' + (t.isMilestone ? '⭐ ' : '') + esc(t.title) + ' &middot; ' + realizadoLabel + (replanEnd ? ' &middot; replanejado p/ ' + fmtDate(replanEnd) : '') + '</div>'
         + '<div class="gantt-track-real">'
         + '<div class="gantt-planned" style="left:' + leftPct + '%;width:' + plannedWidthPct + '%;"></div>'
-        + '<div class="gantt-realized" style="left:' + leftPct + '%;width:' + realizedWidthPct + '%;background:' + realizedColor + ';"></div>'
+        + '<div class="gantt-realized" style="left:' + realizedLeftPct + '%;width:' + realizedWidthPct + '%;background:' + realizedColor + ';"></div>'
         + replanBarHtml
         + '</div></div>';
     });
@@ -1930,6 +1948,8 @@ async function openTaskModal() {
   document.getElementById('taskStartDate').value = '';
   document.getElementById('taskDeadline').value = '';
   document.getElementById('taskReplannedDeadline').value = '';
+  document.getElementById('taskActualStartDate').value = '';
+  document.getElementById('taskActualEndDate').value = '';
   document.getElementById('taskProgress').value = 0;
   document.getElementById('taskHours').value = 0;
   document.getElementById('taskCost').value = 0;
@@ -1971,6 +1991,8 @@ async function editTask(id) {
   document.getElementById('taskStartDate').value = t.startDate ? t.startDate.substring(0, 10) : '';
   document.getElementById('taskDeadline').value = t.deadline ? t.deadline.substring(0, 10) : '';
   document.getElementById('taskReplannedDeadline').value = t.replannedDeadline ? t.replannedDeadline.substring(0, 10) : '';
+  document.getElementById('taskActualStartDate').value = t.actualStartDate ? t.actualStartDate.substring(0, 10) : '';
+  document.getElementById('taskActualEndDate').value = t.actualEndDate ? t.actualEndDate.substring(0, 10) : '';
   document.getElementById('taskProgress').value = t.progress || 0;
   document.getElementById('taskHours').value = t.hoursLogged || 0;
   document.getElementById('taskCost').value = t.cost || 0;
@@ -2078,6 +2100,8 @@ async function saveTask() {
   const startDate = document.getElementById('taskStartDate').value;
   const deadline = document.getElementById('taskDeadline').value;
   const replannedDeadline = document.getElementById('taskReplannedDeadline').value;
+  const actualStartDate = document.getElementById('taskActualStartDate').value;
+  const actualEndDate = document.getElementById('taskActualEndDate').value;
   const progress = document.getElementById('taskProgress').value;
   const hoursLogged = document.getElementById('taskHours').value;
   const cost = canSeeFinanceUI() ? document.getElementById('taskCost').value : undefined;
@@ -2086,7 +2110,7 @@ async function saveTask() {
   if (!title) { error.textContent = 'Titulo e obrigatorio'; error.style.display = 'block'; return; }
   if (!projectId) { error.textContent = 'Selecione um projeto'; error.style.display = 'block'; return; }
   error.style.display = 'none';
-  const body = { title, description, status, priority, assigneeId: assigneeId || null, parentId: parentId || null, startDate: startDate || undefined, deadline: deadline || undefined, replannedDeadline: replannedDeadline || null, progress, hoursLogged, cost, isMilestone };
+  const body = { title, description, status, priority, assigneeId: assigneeId || null, parentId: parentId || null, startDate: startDate || undefined, deadline: deadline || undefined, replannedDeadline: replannedDeadline || null, actualStartDate: actualStartDate || null, actualEndDate: actualEndDate || null, progress, hoursLogged, cost, isMilestone };
   if (!editingTaskId) body.projectId = projectId;
   try {
     const url = editingTaskId ? API + '/api/v1/tasks/' + editingTaskId : API + '/api/v1/tasks';
@@ -2202,8 +2226,29 @@ const BOQ_HEADER_KEYWORDS = {
   valorunit: ['valorunit', 'valorunitario', 'precounit', 'precounitario'],
   valortotal: ['valortotal', 'total', 'valor'],
   datainicio: ['datainicio', 'dtinicio', 'inicio', 'inicioprevisto', 'dataini', 'start'],
-  datafim: ['datafim', 'dtfim', 'datatermino', 'termino', 'prazo', 'dataentrega', 'entrega', 'fimprevisto', 'end', 'deadline']
+  datafim: ['datafim', 'dtfim', 'datatermino', 'termino', 'prazo', 'dataentrega', 'entrega', 'fimprevisto', 'end', 'deadline'],
+  percentual: ['realizado', 'percentualrealizado', 'pctrealizado', 'avancofisico', 'percentual', 'avanco', 'conclusao']
 };
+
+function boqCollectAllHeaderCols(aoa, rowIndex) {
+  const row = aoa[rowIndex] || [];
+  const allInicio = [], allFim = [];
+  row.forEach((cell, colIdx) => {
+    const n = normKey(cell);
+    if (!n) return;
+    if (BOQ_HEADER_KEYWORDS.datainicio.some(k => n === k || n.indexOf(k) > -1)) allInicio.push(colIdx);
+    if (BOQ_HEADER_KEYWORDS.datafim.some(k => n === k || n.indexOf(k) > -1)) allFim.push(colIdx);
+  });
+  return { allInicio, allFim };
+}
+
+function parsePercentValue(v) {
+  if (v === undefined || v === null || v === '') return undefined;
+  if (typeof v === 'number') return v <= 1 ? Math.round(v * 100) : Math.round(v);
+  const s = String(v).replace('%', '').replace(',', '.').trim();
+  const n = parseFloat(s);
+  return isNaN(n) ? undefined : Math.round(n);
+}
 
 function groupDateRange(items) {
   const starts = items.map(i => i.startDate).filter(Boolean).sort();
@@ -2239,6 +2284,12 @@ function boqParseSheetGrouped(sheetName, aoa) {
   const { rowIndex, cols } = header;
   if (cols.descricao === undefined) return { groups: [], recognized: true };
 
+  const { allInicio, allFim } = boqCollectAllHeaderCols(aoa, rowIndex);
+  const plannedStartCol = allInicio[0];
+  const plannedEndCol = allFim[0];
+  const actualStartCol = allInicio.length > 1 ? allInicio[1] : undefined;
+  const actualEndCol = allFim.length > 1 ? allFim[1] : undefined;
+
   const groups = [];
   let currentGroup = { title: 'Servicos - ' + sheetName, items: [] };
   groups.push(currentGroup);
@@ -2268,12 +2319,19 @@ function boqParseSheetGrouped(sheetName, aoa) {
       continue;
     }
 
+    const actualStart = actualStartCol !== undefined ? excelDateToISO(row[actualStartCol]) : undefined;
+    const actualEnd = actualEndCol !== undefined ? excelDateToISO(row[actualEndCol]) : undefined;
+    const explicitPercent = cols.percentual !== undefined ? parsePercentValue(row[cols.percentual]) : undefined;
+
     currentGroup.items.push({
       title: desc.substring(0, 150),
       description: '[' + sheetName + ']' + (qty ? ' Qtde: ' + qty + (cols.unidade !== undefined && row[cols.unidade] ? ' ' + String(row[cols.unidade]).trim() : '') : ''),
       cost: Math.round(totalValue * 100) / 100,
-      startDate: cols.datainicio !== undefined ? excelDateToISO(row[cols.datainicio]) : undefined,
-      deadline: cols.datafim !== undefined ? excelDateToISO(row[cols.datafim]) : undefined
+      startDate: plannedStartCol !== undefined ? excelDateToISO(row[plannedStartCol]) : undefined,
+      deadline: plannedEndCol !== undefined ? excelDateToISO(row[plannedEndCol]) : undefined,
+      actualStartDate: actualStart,
+      actualEndDate: actualEnd,
+      progress: explicitPercent !== undefined ? explicitPercent : (actualEnd ? 100 : (actualStart ? 50 : undefined))
     });
   }
 
