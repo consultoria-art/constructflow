@@ -603,6 +603,8 @@ const server = http.createServer(async (req, res) => {
       if (data.deadline) data.deadline = new Date(data.deadline);
       if (data.startDate) data.startDate = new Date(data.startDate);
       if (data.replannedDeadline) data.replannedDeadline = new Date(data.replannedDeadline);
+      if (data.actualStartDate) data.actualStartDate = new Date(data.actualStartDate);
+      if (data.actualEndDate) data.actualEndDate = new Date(data.actualEndDate);
       if (data.progress !== undefined) data.progress = parseInt(data.progress) || 0;
       if (data.hoursLogged !== undefined) data.hoursLogged = parseFloat(data.hoursLogged) || 0;
       if (data.cost !== undefined) data.cost = parseFloat(data.cost) || 0;
@@ -644,6 +646,8 @@ const server = http.createServer(async (req, res) => {
             parentId: r.parentId || null,
             startDate: r.startDate ? new Date(r.startDate) : null,
             deadline: r.deadline ? new Date(r.deadline) : null,
+            actualStartDate: r.actualStartDate ? new Date(r.actualStartDate) : null,
+            actualEndDate: r.actualEndDate ? new Date(r.actualEndDate) : null,
             progress: parseInt(r.progress) || 0,
             hoursLogged: parseFloat(r.hoursLogged) || 0,
             cost: parseFloat(r.cost) || 0,
@@ -661,6 +665,8 @@ const server = http.createServer(async (req, res) => {
       if (data.deadline) data.deadline = new Date(data.deadline);
       if (data.startDate) data.startDate = new Date(data.startDate);
       if (data.replannedDeadline !== undefined) data.replannedDeadline = data.replannedDeadline ? new Date(data.replannedDeadline) : null;
+      if (data.actualStartDate !== undefined) data.actualStartDate = data.actualStartDate ? new Date(data.actualStartDate) : null;
+      if (data.actualEndDate !== undefined) data.actualEndDate = data.actualEndDate ? new Date(data.actualEndDate) : null;
       if (data.progress !== undefined) data.progress = parseInt(data.progress) || 0;
       if (data.hoursLogged !== undefined) data.hoursLogged = parseFloat(data.hoursLogged) || 0;
       if (data.cost !== undefined) data.cost = parseFloat(data.cost) || 0;
