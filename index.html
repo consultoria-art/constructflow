@@ -110,6 +110,18 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 .pie-legend-item { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
 .pie-legend-dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 .curva-s-wrap svg { width: 100%; height: auto; }
+.ai-fab { position: fixed; bottom: 24px; right: 24px; width: 56px; height: 56px; border-radius: 50%; background: #4f46e5; color: #fff; border: none; font-size: 24px; cursor: pointer; box-shadow: 0 4px 12px rgba(79,70,229,.4); z-index: 200; display: flex; align-items: center; justify-content: center; }
+.ai-fab:hover { background: #4338ca; }
+.ai-chat-panel { position: fixed; bottom: 90px; right: 24px; width: 360px; max-width: 90vw; height: 480px; max-height: 70vh; background: #fff; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,.2); display: flex; flex-direction: column; z-index: 200; overflow: hidden; }
+.ai-chat-header { background: #1e2030; color: #fff; padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: 600; }
+.ai-chat-header span.close { cursor: pointer; font-size: 18px; opacity: .8; }
+.ai-chat-messages { flex: 1; overflow-y: auto; padding: 14px; }
+.ai-msg { margin-bottom: 12px; font-size: 13px; line-height: 1.5; max-width: 85%; padding: 8px 12px; border-radius: 10px; }
+.ai-msg-user { background: #4f46e5; color: #fff; margin-left: auto; border-bottom-right-radius: 2px; }
+.ai-msg-ai { background: #f3f4f6; color: #111827; margin-right: auto; border-bottom-left-radius: 2px; white-space: pre-wrap; }
+.ai-chat-input-wrap { border-top: 1px solid #e5e7eb; padding: 10px; display: flex; gap: 8px; }
+.ai-chat-input-wrap input { flex: 1; border: 1px solid #d1d5db; border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+.hint-box { background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #3730a3; margin-bottom: 16px; }
 .insight-title-critical { color: #991b1b; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
 .insight-title-improvement { color: #9a3412; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
 .insight-title-positive { color: #065f46; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
@@ -275,6 +287,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <div class="user-avatar" id="userAvatar">A</div>
 <div><div class="user-name" id="userName">Carregando...</div><div class="user-org" id="userOrg">Carregando...</div></div>
 </div>
+<div class="logout" onclick="openContactModal()" style="margin-bottom:4px;">💬 Fale Conosco</div>
 <div class="logout" onclick="logout()">Sair</div>
 </div>
 
@@ -289,6 +302,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
         <button class="btn btn-primary" onclick="openProjectModal()">+ Novo Projeto</button>
       </div>
     </div>
+    <div class="hint-box">💡 Este e o seu resumo geral. Para comecar, cadastre um projeto em "Projetos" - dali, tudo se organiza automaticamente nas outras abas.</div>
     <div class="kpis">
       <div class="kpi-card"><div class="kpi-value" id="kpiProjetos">0</div><div class="kpi-label">PROJETOS ATIVOS</div><span class="kpi-badge badge-green">Em andamento</span></div>
       <div class="kpi-card"><div class="kpi-value" id="kpiAtrasados">0</div><div class="kpi-label">ATRASADOS</div><span class="kpi-badge badge-red">Requer atencao</span></div>
@@ -382,6 +396,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
         <button class="btn btn-primary" onclick="openMovementModal()">+ Registrar Movimentacao</button>
       </div>
     </div>
+    <div class="hint-box">💡 Cadastre primeiro os materiais (ex: Cimento, Areia) com "+ Novo Material", depois registre cada compra (entrada) ou uso na obra (saida) em "+ Registrar Movimentacao".</div>
     <div id="suprimentosInsights"></div>
     <div class="tabs">
       <button class="tab-btn active" id="tabMateriais" onclick="switchSuprimentosTab('materiais')">Saldo por Material</button>
@@ -397,6 +412,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
       <div><h1>Despesas</h1><p>Lancamento de gastos gerais (mao de obra, terceiros, notas fiscais)</p></div>
       <div class="header-right"><button class="btn btn-primary" onclick="openExpenseModal()">+ Nova Despesa</button></div>
     </div>
+    <div class="hint-box">💡 A plataforma avisa automaticamente aqui em cima se algum projeto estiver perto ou acima do orcamento.</div>
     <div id="despesasInsights"></div>
     <div class="card"><div id="despesasTable"><div class="loading">Carregando...</div></div></div>
   </div>
@@ -407,6 +423,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
       <div><h1>Riscos e Pendencias</h1><p>Registro e acompanhamento de riscos e pendencias por projeto</p></div>
       <div class="header-right"><button class="btn btn-primary" onclick="openRiskModal()">+ Novo Registro</button></div>
     </div>
+    <div class="hint-box">💡 Marque a Probabilidade e o Impacto ao cadastrar um risco - riscos de impacto "Alto" em aberto viram alerta automatico no Painel.</div>
     <div id="riscosInsights"></div>
     <div class="card"><div id="riscosTable"><div class="loading">Carregando...</div></div></div>
   </div>
@@ -417,12 +434,14 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
       <div><h1>Equipe</h1><p>Usuarios da organizacao</p></div>
       <div class="header-right"><button class="btn btn-primary" onclick="openUserModal()">+ Convidar Usuario</button></div>
     </div>
+    <div class="hint-box">💡 Engenheiros nao veem dados financeiros (Despesas, Orcamento). Coordenadores e Administradores veem tudo.</div>
     <div class="card"><div id="equipeTable"><div class="loading">Carregando...</div></div></div>
   </div>
 
   <!-- CONFIGURACOES -->
   <div class="view-section" id="view-configuracoes">
     <div class="header"><div><h1>Configuracoes</h1><p>Dados da sua conta e organizacao</p></div></div>
+    <div class="hint-box">💡 Se sua assinatura estiver com pagamento pendente ou atrasado, o botao "Gerenciar assinatura" abaixo permite regularizar direto pelo Stripe.</div>
     <div class="content-grid">
       <div class="card">
         <h3>Organizacao</h3>
@@ -724,6 +743,39 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 </div>
 </div>
 
+<!-- ASSISTENTE DE IA -->
+<button class="ai-fab hidden" id="aiFab" onclick="toggleAiChat()">🤖</button>
+<div class="ai-chat-panel hidden" id="aiChatPanel">
+<div class="ai-chat-header">
+<span>🤖 Assistente ConstructFlow</span>
+<span class="close" onclick="toggleAiChat()">&times;</span>
+</div>
+<div class="ai-chat-messages" id="aiChatMessages">
+<div class="ai-msg ai-msg-ai">Oi! Sou o assistente da plataforma. Pergunte algo como "como crio um projeto" ou "onde vejo o cronograma".</div>
+</div>
+<div class="ai-chat-input-wrap">
+<input type="text" id="aiChatInput" placeholder="Digite sua duvida..." onkeydown="if(event.key==='Enter') sendAiMessage()">
+<button class="btn btn-primary btn-sm" onclick="sendAiMessage()">Enviar</button>
+</div>
+</div>
+
+<!-- MODAL FALE CONOSCO -->
+<div class="modal-overlay" id="contactModal">
+<div class="modal-box">
+<h2 style="margin-bottom:20px;">Fale Conosco</h2>
+<div class="error" id="contactError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+<label class="field">Assunto</label>
+<input id="contactSubject" type="text" class="input" placeholder="Ex: Erro ao importar planilha">
+<label class="field">Mensagem</label>
+<textarea id="contactMessage" class="input" rows="5" style="resize:vertical;" placeholder="Descreva o problema ou a duvida com o maximo de detalhes possivel"></textarea>
+<p style="font-size:12px;color:#6b7280;margin-bottom:16px;">Isso abre seu aplicativo de e-mail com a mensagem pronta para enviar ao nosso suporte.</p>
+<div style="display:flex;gap:12px;justify-content:flex-end;">
+<button class="btn btn-secondary" onclick="closeModal('contactModal')">Cancelar</button>
+<button class="btn btn-primary" onclick="sendContactMessage()">Abrir E-mail</button>
+</div>
+</div>
+</div>
+
 <script>
 const API = '';
 let currentUser = null;
@@ -828,6 +880,60 @@ function isOwnerUI() {
   return currentUser && currentUser.role === 'admin';
 }
 
+// ============ ASSISTENTE DE IA ============
+let aiChatHistory = [];
+
+function toggleAiChat() {
+  document.getElementById('aiChatPanel').classList.toggle('hidden');
+}
+
+async function sendAiMessage() {
+  const input = document.getElementById('aiChatInput');
+  const message = input.value.trim();
+  if (!message) return;
+  const messagesBox = document.getElementById('aiChatMessages');
+  messagesBox.innerHTML += '<div class="ai-msg ai-msg-user">' + esc(message) + '</div>';
+  input.value = '';
+  messagesBox.scrollTop = messagesBox.scrollHeight;
+  const loadingId = 'ai-loading-' + Date.now();
+  messagesBox.innerHTML += '<div class="ai-msg ai-msg-ai" id="' + loadingId + '">Digitando...</div>';
+  messagesBox.scrollTop = messagesBox.scrollHeight;
+  try {
+    const res = await fetch(API + '/api/v1/ai/chat', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ message, history: aiChatHistory }) });
+    const d = await res.json();
+    const loadingEl = document.getElementById(loadingId);
+    if (!res.ok) { loadingEl.textContent = 'Erro: ' + (d.error || 'nao foi possivel responder agora.'); return; }
+    loadingEl.textContent = d.reply;
+    aiChatHistory.push({ role: 'user', content: message });
+    aiChatHistory.push({ role: 'assistant', content: d.reply });
+    messagesBox.scrollTop = messagesBox.scrollHeight;
+  } catch (e) {
+    const loadingEl = document.getElementById(loadingId);
+    if (loadingEl) loadingEl.textContent = 'Erro de conexao. Tente novamente.';
+  }
+}
+
+// ============ FALE CONOSCO ============
+function openContactModal() {
+  document.getElementById('contactSubject').value = '';
+  document.getElementById('contactMessage').value = '';
+  document.getElementById('contactError').style.display = 'none';
+  document.getElementById('contactModal').style.display = 'flex';
+}
+
+function sendContactMessage() {
+  const subject = document.getElementById('contactSubject').value;
+  const message = document.getElementById('contactMessage').value;
+  const error = document.getElementById('contactError');
+  if (!subject || !message) { error.textContent = 'Preencha o assunto e a mensagem'; error.style.display = 'block'; return; }
+  error.style.display = 'none';
+  const userInfo = currentUser ? (' (usuario: ' + currentUser.name + ' - ' + currentUser.email + ')') : '';
+  const body = encodeURIComponent(message + '\n\n---\n' + (currentUser ? currentUser.name + ' - ' + currentUser.email : ''));
+  const mailSubject = encodeURIComponent('[ConstructFlow] ' + subject);
+  window.location.href = 'mailto:consultoria@arqenergy.net?subject=' + mailSubject + '&body=' + body;
+  closeModal('contactModal');
+}
+
 function applyRolePermissions() {
   const financeOk = canSeeFinanceUI();
   const despesasNav = document.querySelector('.sidebar nav a[data-view="despesas"]');
@@ -837,6 +943,7 @@ function applyRolePermissions() {
   document.getElementById('kpiOrcamentoCard') && document.getElementById('kpiOrcamentoCard').classList.toggle('hidden', !financeOk);
   document.getElementById('ownerSummarySection') && document.getElementById('ownerSummarySection').classList.toggle('hidden', !isOwnerUI());
   document.getElementById('revenueForecastCard') && document.getElementById('revenueForecastCard').classList.toggle('hidden', !isOwnerUI());
+  document.getElementById('aiFab').classList.remove('hidden');
 }
 
 let selectedPlanKey = null;
