@@ -370,6 +370,11 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
       </div>
     </div>
     <p class="import-hint">Planilha de importacao deve ter colunas: title, project (nome do projeto), description, status, priority, responsible, deadline (AAAA-MM-DD). "Lista de Servicos (Obra)" le planilhas reais de orcamento/BOQ com varias abas, cabecalho fora da linha 1 e linhas de subtotal - servicos sao agrupados em tarefas macro por setor, com os subitens dentro.</p>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;">
+      <select id="bulkDeleteProjectSelect" class="input" style="max-width:260px;margin-bottom:0;"></select>
+      <button class="btn btn-danger btn-sm" onclick="bulkDeleteTasks('atividade')">Excluir Atividades deste Projeto</button>
+      <button class="btn btn-danger btn-sm" onclick="bulkDeleteTasks('tarefa')">Excluir Tarefas Internas deste Projeto</button>
+    </div>
     <input type="text" id="taskSearchInput" class="input" placeholder="Buscar tarefa por titulo (inclui subitens)..." oninput="loadKanban()" style="max-width:400px;">
     <div class="kanban-board">
       <div class="kanban-col" data-status="pending" ondragover="event.preventDefault(); this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="onKanbanDrop(event, 'pending')">
@@ -552,9 +557,17 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <h3 style="font-size:13px;margin-bottom:8px;">Subitens desta tarefa</h3>
 <div id="taskChildrenList" style="max-height:200px;overflow-y:auto;"></div>
 </div>
-<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
+<div id="taskAttachmentsWrap" class="hidden" style="margin-top:16px;border-top:1px solid #e5e7eb;padding-top:12px;">
+<h3 style="font-size:13px;margin-bottom:8px;">Anexos (fotos, Word, Excel, PDF...)</h3>
+<div id="taskAttachmentsList" style="margin-bottom:8px;"></div>
+<label class="file-input-label">📎 Anexar Arquivo<input type="file" id="taskFileInput" style="display:none" onchange="uploadTaskAttachment(this)"></label>
+</div>
+<div style="display:flex;gap:12px;justify-content:space-between;margin-top:24px;">
+<button class="btn btn-danger" id="taskDeleteBtn" onclick="deleteTaskFromModal()">Excluir Tarefa</button>
+<div style="display:flex;gap:12px;">
 <button class="btn btn-secondary" onclick="closeModal('taskModal')">Cancelar</button>
 <button class="btn btn-primary" onclick="saveTask()">Salvar</button>
+</div>
 </div>
 </div>
 </div>
@@ -568,6 +581,8 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <input id="userNameInput" type="text" class="input">
 <label class="field">Email</label>
 <input id="userEmailInput" type="email" class="input">
+<label class="field">Telefone/WhatsApp (com DDD, so numeros - opcional)</label>
+<input id="userPhoneInput" type="text" class="input" placeholder="Ex: 5565999999999">
 <label class="field">Senha temporaria</label>
 <input id="userPasswordInput" type="password" class="input" placeholder="Minimo 6 caracteres">
 <label class="field">Perfil</label>
@@ -1694,7 +1709,8 @@ async function processMasterSpreadsheet(projectId, file) {
             if (!result.recognized || !result.groups.length) { unrecognized.push(sheetName); continue; }
             for (const group of result.groups) {
               const groupCost = group.items.reduce((s, i) => s + i.cost, 0);
-              const res = await fetch(API + '/api/v1/tasks', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ title: group.title, description: 'Grupo importado da planilha (' + group.items.length + ' subitens)', type: 'atividade', status: 'pending', priority: 'medium', cost: groupCost, projectId }) });
+              const groupDates = groupDateRange(group.items);
+              const res = await fetch(API + '/api/v1/tasks', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ title: group.title, description: 'Grupo importado da planilha (' + group.items.length + ' subitens)', type: 'atividade', status: 'pending', priority: 'medium', cost: groupCost, startDate: groupDates.startDate, deadline: groupDates.deadline, projectId }) });
               const createdGroup = await res.json();
               if (!res.ok) continue;
               groupsCreated++;
@@ -1825,6 +1841,11 @@ async function loadKanban() {
     const allTasks = allTasksRaw.filter(t => t.type !== 'atividade');
     window._cachedTasks = allTasksRaw;
 
+    const bulkSel = document.getElementById('bulkDeleteProjectSelect');
+    const prevBulkVal = bulkSel.value;
+    bulkSel.innerHTML = cachedProjects.map(p => '<option value="' + p.id + '">' + esc(p.name) + '</option>').join('');
+    if (prevBulkVal && cachedProjects.some(p => p.id === prevBulkVal)) bulkSel.value = prevBulkVal;
+
     const searchRaw = (document.getElementById('taskSearchInput') || {}).value || '';
     const search = normKey(searchRaw);
 
@@ -1841,6 +1862,21 @@ async function loadKanban() {
     renderKanbanColumn('in_progress', 'kanbanInProgress', 'countInProgress', tasksToShow);
     renderKanbanColumn('done', 'kanbanDone', 'countDone', tasksToShow);
   } catch (e) { console.error(e); }
+}
+
+async function bulkDeleteTasks(type) {
+  const projectId = document.getElementById('bulkDeleteProjectSelect').value;
+  if (!projectId) { alert('Selecione um projeto primeiro'); return; }
+  const projName = (cachedProjects.find(p => p.id === projectId) || {}).name || 'este projeto';
+  const label = type === 'atividade' ? 'TODAS as atividades de obra (importadas de planilha)' : 'TODAS as tarefas internas (Kanban)';
+  if (!confirm('Tem certeza? Isso vai excluir ' + label + ' do projeto "' + projName + '", incluindo subitens e anexos. Essa acao nao pode ser desfeita.')) return;
+  try {
+    const res = await fetch(API + '/api/v1/tasks/bulk-delete', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ projectId, type }) });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || 'Erro ao excluir');
+    alert(d.deleted + ' tarefa(s) excluida(s).');
+    loadKanban();
+  } catch (e) { alert('Erro: ' + e.message); }
 }
 
 function renderKanbanColumn(status, containerId, countId, tasks) {
@@ -1900,6 +1936,8 @@ async function openTaskModal() {
   document.getElementById('taskCostField').classList.toggle('hidden', !canSeeFinanceUI());
   document.getElementById('taskMilestone').checked = false;
   document.getElementById('taskChildrenWrap').classList.add('hidden');
+  document.getElementById('taskAttachmentsWrap').classList.add('hidden');
+  document.getElementById('taskDeleteBtn').classList.add('hidden');
   document.getElementById('taskModal').style.display = 'flex';
 }
 
@@ -1955,7 +1993,78 @@ async function editTask(id) {
   } else {
     childrenWrap.classList.add('hidden');
   }
+
+  document.getElementById('taskDeleteBtn').classList.remove('hidden');
+  document.getElementById('taskAttachmentsWrap').classList.remove('hidden');
+  await loadTaskAttachments(id);
+
   document.getElementById('taskModal').style.display = 'flex';
+}
+
+async function deleteTaskFromModal() {
+  if (!editingTaskId) return;
+  const children = (window._cachedTasks || []).filter(x => x.parentId === editingTaskId);
+  const warn = children.length ? ' Esta tarefa tem ' + children.length + ' subitem(ns) que tambem serao excluidos.' : '';
+  if (!confirm('Tem certeza que deseja excluir esta tarefa?' + warn)) return;
+  try {
+    for (const ch of children) {
+      await fetch(API + '/api/v1/tasks/' + ch.id, { method: 'DELETE', headers: apiHeaders() });
+    }
+    await fetch(API + '/api/v1/tasks/' + editingTaskId, { method: 'DELETE', headers: apiHeaders() });
+    closeModal('taskModal');
+    loadKanban();
+  } catch (e) { alert('Erro ao excluir tarefa'); }
+}
+
+async function loadTaskAttachments(taskId) {
+  const listEl = document.getElementById('taskAttachmentsList');
+  listEl.innerHTML = '<div class="loading">Carregando...</div>';
+  try {
+    const res = await fetch(API + '/api/v1/documents', { headers: apiHeaders() });
+    const allDocs = await res.json();
+    const docs = allDocs.filter(d => d.taskId === taskId);
+    if (!docs.length) { listEl.innerHTML = '<p style="font-size:12px;color:#6b7280;">Nenhum anexo ainda.</p>'; return; }
+    listEl.innerHTML = docs.map(d => (
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">'
+      + '<span>📎 ' + esc(d.filename) + '</span>'
+      + '<span><a style="color:#4f46e5;cursor:pointer;margin-right:10px;" onclick="downloadTaskAttachment(\'' + d.id + '\')">Baixar</a><a style="color:#dc2626;cursor:pointer;" onclick="deleteTaskAttachment(\'' + d.id + '\',\'' + taskId + '\')">Excluir</a></span>'
+      + '</div>'
+    )).join('');
+  } catch (e) { listEl.innerHTML = '<p style="font-size:12px;color:#dc2626;">Erro ao carregar anexos.</p>'; }
+}
+
+function uploadTaskAttachment(input) {
+  const file = input.files[0];
+  if (!file || !editingTaskId) return;
+  if (file.size > 4 * 1024 * 1024) { alert('Arquivo maior que 4MB nao suportado.'); input.value = ''; return; }
+  const task = (window._cachedTasks || []).find(x => x.id === editingTaskId);
+  const projectId = task ? task.projectId : document.getElementById('taskProject').value;
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const base64 = e.target.result.split(',')[1];
+    try {
+      const res = await fetch(API + '/api/v1/documents', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ filename: file.name, mimeType: file.type, data: base64, projectId, taskId: editingTaskId }) });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+      await loadTaskAttachments(editingTaskId);
+    } catch (err) { alert('Erro ao enviar anexo: ' + err.message); }
+    input.value = '';
+  };
+  reader.readAsDataURL(file);
+}
+
+async function downloadTaskAttachment(id) {
+  const res = await fetch(API + '/api/v1/documents/' + id + '/download', { headers: apiHeaders() });
+  const d = await res.json();
+  const link = document.createElement('a');
+  link.href = 'data:' + d.mimeType + ';base64,' + d.data;
+  link.download = d.filename;
+  link.click();
+}
+
+async function deleteTaskAttachment(id, taskId) {
+  if (!confirm('Excluir este anexo?')) return;
+  await fetch(API + '/api/v1/documents/' + id, { method: 'DELETE', headers: apiHeaders() });
+  loadTaskAttachments(taskId);
 }
 
 async function saveTask() {
@@ -2091,8 +2200,16 @@ const BOQ_HEADER_KEYWORDS = {
   quantidade: ['qtde', 'qtd', 'quantidade', 'quant'],
   unidade: ['und', 'unid', 'unidade'],
   valorunit: ['valorunit', 'valorunitario', 'precounit', 'precounitario'],
-  valortotal: ['valortotal', 'total', 'valor']
+  valortotal: ['valortotal', 'total', 'valor'],
+  datainicio: ['datainicio', 'dtinicio', 'inicio', 'inicioprevisto', 'dataini', 'start'],
+  datafim: ['datafim', 'dtfim', 'datatermino', 'termino', 'prazo', 'dataentrega', 'entrega', 'fimprevisto', 'end', 'deadline']
 };
+
+function groupDateRange(items) {
+  const starts = items.map(i => i.startDate).filter(Boolean).sort();
+  const ends = items.map(i => i.deadline).filter(Boolean).sort();
+  return { startDate: starts.length ? starts[0] : undefined, deadline: ends.length ? ends[ends.length - 1] : undefined };
+}
 
 function boqFindHeaderRow(aoa) {
   let bestRow = -1, bestScore = 0, bestCols = null;
@@ -2154,7 +2271,9 @@ function boqParseSheetGrouped(sheetName, aoa) {
     currentGroup.items.push({
       title: desc.substring(0, 150),
       description: '[' + sheetName + ']' + (qty ? ' Qtde: ' + qty + (cols.unidade !== undefined && row[cols.unidade] ? ' ' + String(row[cols.unidade]).trim() : '') : ''),
-      cost: Math.round(totalValue * 100) / 100
+      cost: Math.round(totalValue * 100) / 100,
+      startDate: cols.datainicio !== undefined ? excelDateToISO(row[cols.datainicio]) : undefined,
+      deadline: cols.datafim !== undefined ? excelDateToISO(row[cols.datafim]) : undefined
     });
   }
 
@@ -2213,7 +2332,8 @@ async function confirmBoqImport() {
     const childRows = [];
     for (const group of boqParsedGroups) {
       const groupCost = group.items.reduce((s, i) => s + i.cost, 0);
-      const res = await fetch(API + '/api/v1/tasks', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ title: group.title, description: 'Grupo importado da planilha de servicos (' + group.items.length + ' subitens)', type: 'atividade', status: 'pending', priority: 'medium', cost: groupCost, projectId }) });
+      const groupDates = groupDateRange(group.items);
+      const res = await fetch(API + '/api/v1/tasks', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ title: group.title, description: 'Grupo importado da planilha de servicos (' + group.items.length + ' subitens)', type: 'atividade', status: 'pending', priority: 'medium', cost: groupCost, startDate: groupDates.startDate, deadline: groupDates.deadline, projectId }) });
       const createdGroup = await res.json();
       if (!res.ok) continue;
       groupsCreated++;
@@ -2497,6 +2617,7 @@ async function loadEquipeView() {
 function openUserModal() {
   document.getElementById('userNameInput').value = '';
   document.getElementById('userEmailInput').value = '';
+  document.getElementById('userPhoneInput').value = '';
   document.getElementById('userPasswordInput').value = '';
   document.getElementById('userRoleInput').value = 'engenheiro';
   document.getElementById('userModal').style.display = 'flex';
@@ -2505,6 +2626,7 @@ function openUserModal() {
 async function saveUser() {
   const name = document.getElementById('userNameInput').value;
   const email = document.getElementById('userEmailInput').value;
+  const phone = document.getElementById('userPhoneInput').value.replace(/\D/g, '');
   const password = document.getElementById('userPasswordInput').value;
   const role = document.getElementById('userRoleInput').value;
   const error = document.getElementById('userError');
@@ -2512,7 +2634,7 @@ async function saveUser() {
   if (password.length < 6) { error.textContent = 'Senha deve ter no minimo 6 caracteres'; error.style.display = 'block'; return; }
   error.style.display = 'none';
   try {
-    const res = await fetch(API + '/api/v1/users', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ name, email, password, role }) });
+    const res = await fetch(API + '/api/v1/users', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ name, email, phone: phone || null, password, role }) });
     if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Erro ao convidar'); }
     closeModal('userModal');
     loadEquipeView();
