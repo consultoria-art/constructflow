@@ -28,6 +28,63 @@ const AI_SYSTEM_PROMPT = `Voce e o assistente de ajuda da plataforma ConstructFl
 
 Se o usuario perguntar algo fora do escopo da plataforma, ou tiver um problema tecnico que voce nao consegue resolver por texto, oriente a usar o botao "Fale Conosco" para contato direto com o suporte.`;
 const APP_URL = process.env.APP_URL || '';
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const RESEND_FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'notificacoes@arqenergy.net';
+const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || '';
+const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || '';
+const TWILIO_WHATSAPP_FROM = process.env.TWILIO_WHATSAPP_FROM || '';
+
+async function sendEmailNotification(toEmail, subject, htmlBody) {
+  if (!RESEND_API_KEY || !toEmail) return;
+  try {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + RESEND_API_KEY },
+      body: JSON.stringify({ from: 'ConstructFlow <' + RESEND_FROM_EMAIL + '>', to: [toEmail], subject, html: htmlBody })
+    });
+  } catch (e) { console.error('Erro ao enviar email:', e.message); }
+}
+
+async function sendWhatsAppNotification(toPhone, message) {
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_WHATSAPP_FROM || !toPhone) return;
+  try {
+    const cleanPhone = String(toPhone).replace(/\D/g, '');
+    const to = 'whatsapp:+' + cleanPhone;
+    const params = new URLSearchParams({ From: TWILIO_WHATSAPP_FROM, To: to, Body: message });
+    await fetch('https://api.twilio.com/2010-04-01/Accounts/' + TWILIO_ACCOUNT_SID + '/Messages.json', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': 'Basic ' + Buffer.from(TWILIO_ACCOUNT_SID + ':' + TWILIO_AUTH_TOKEN).toString('base64')
+      },
+      body: params.toString()
+    });
+  } catch (e) { console.error('Erro ao enviar WhatsApp:', e.message); }
+}
+
+async function notifyTaskAssignment(task, projectName) {
+  if (!task.assigneeId) return;
+  const assignee = await prisma.user.findUnique({ where: { id: task.assigneeId } });
+  if (!assignee) return;
+  const deadlineStr = task.deadline ? new Date(task.deadline).toLocaleDateString('pt-BR') : 'sem prazo definido';
+  const subject = 'Nova tarefa atribuida: ' + task.title;
+  const html = '<p>Ola ' + assignee.name + ',</p><p>Voce foi designado(a) para a tarefa <strong>' + task.title + '</strong> no projeto <strong>' + projectName + '</strong>.</p><p><strong>Prazo:</strong> ' + deadlineStr + '</p><p>Acesse a plataforma para mais detalhes: ' + APP_URL + '</p>';
+  const wppMsg = 'Ola ' + assignee.name + '! Voce foi designado(a) para a tarefa "' + task.title + '" no projeto ' + projectName + '. Prazo: ' + deadlineStr + '.';
+  sendEmailNotification(assignee.email, subject, html);
+  if (assignee.phone) sendWhatsAppNotification(assignee.phone, wppMsg);
+}
+
+async function notifyTaskOverdue(task, projectName) {
+  if (!task.assigneeId) return;
+  const assignee = await prisma.user.findUnique({ where: { id: task.assigneeId } });
+  if (!assignee) return;
+  const deadlineStr = task.deadline ? new Date(task.deadline).toLocaleDateString('pt-BR') : '';
+  const subject = 'Tarefa atrasada: ' + task.title;
+  const html = '<p>Ola ' + assignee.name + ',</p><p>A tarefa <strong>' + task.title + '</strong> no projeto <strong>' + projectName + '</strong> esta atrasada. O prazo era ' + deadlineStr + '.</p><p>Acesse a plataforma para atualizar: ' + APP_URL + '</p>';
+  const wppMsg = 'Atencao ' + assignee.name + ': a tarefa "' + task.title + '" (' + projectName + ') esta atrasada. Prazo era ' + deadlineStr + '.';
+  sendEmailNotification(assignee.email, subject, html);
+  if (assignee.phone) sendWhatsAppNotification(assignee.phone, wppMsg);
+}
 
 const PLANS = {
   basico: { name: 'Basico', price: 97, description: 'Ate 3 projetos ativos, ate 5 usuarios', priceId: process.env.STRIPE_PRICE_BASICO },
@@ -129,6 +186,27 @@ async function runAutomation(organizationId) {
         await prisma.alert.create({ data: { projectId: p.id, title, message: 'O gasto atual (' + pct + '% do orcamento) ultrapassou o valor orcado.', type: 'alert' } });
         alertsCreated++;
       }
+    }
+  }
+
+  const overdueTasks = await prisma.task.findMany({
+    where: {
+      project: { organizationId },
+      type: 'tarefa',
+      status: { not: 'done' },
+      deadline: { lt: now },
+      replannedDeadline: null
+    },
+    include: { project: true, assignee: true }
+  });
+  for (const t of overdueTasks) {
+    const title = 'Tarefa atrasada: ' + t.title;
+    const exists = await prisma.alert.findFirst({ where: { projectId: t.projectId, title, read: false } });
+    if (!exists) {
+      const quem = t.assignee ? ' (responsavel: ' + t.assignee.name + ')' : '';
+      await prisma.alert.create({ data: { projectId: t.projectId, title, message: 'O prazo desta tarefa venceu em ' + new Date(t.deadline).toLocaleDateString('pt-BR') + quem + '.', type: 'urgent' } });
+      alertsCreated++;
+      notifyTaskOverdue(t, t.project ? t.project.name : '');
     }
   }
 
@@ -528,7 +606,12 @@ const server = http.createServer(async (req, res) => {
       if (data.progress !== undefined) data.progress = parseInt(data.progress) || 0;
       if (data.hoursLogged !== undefined) data.hoursLogged = parseFloat(data.hoursLogged) || 0;
       if (data.cost !== undefined) data.cost = parseFloat(data.cost) || 0;
-      return sendJSON(res, 201, await prisma.task.create({ data }));
+      const newTask = await prisma.task.create({ data });
+      if (newTask.type !== 'atividade' && newTask.assigneeId) {
+        const proj = await prisma.project.findUnique({ where: { id: newTask.projectId } });
+        notifyTaskAssignment(newTask, proj ? proj.name : '');
+      }
+      return sendJSON(res, 201, newTask);
     }
 
     if (req.url === '/api/v1/tasks/bulk' && req.method === 'POST') {
@@ -581,11 +664,36 @@ const server = http.createServer(async (req, res) => {
       if (data.progress !== undefined) data.progress = parseInt(data.progress) || 0;
       if (data.hoursLogged !== undefined) data.hoursLogged = parseFloat(data.hoursLogged) || 0;
       if (data.cost !== undefined) data.cost = parseFloat(data.cost) || 0;
-      return sendJSON(res, 200, await prisma.task.update({ where: { id }, data }));
+      const before = await prisma.task.findUnique({ where: { id } });
+      const updated = await prisma.task.update({ where: { id }, data });
+      if (updated.type !== 'atividade' && updated.assigneeId && before && before.assigneeId !== updated.assigneeId) {
+        const proj = await prisma.project.findUnique({ where: { id: updated.projectId } });
+        notifyTaskAssignment(updated, proj ? proj.name : '');
+      }
+      return sendJSON(res, 200, updated);
+    }
+
+    if (req.url === '/api/v1/tasks/bulk-delete' && req.method === 'POST') {
+      const { projectId, type } = await parseBody(req);
+      if (!projectId) return sendJSON(res, 400, { error: 'Projeto e obrigatorio' });
+      const project = await prisma.project.findFirst({ where: { id: projectId, organizationId: user.organizationId } });
+      if (!project) return sendJSON(res, 404, { error: 'Projeto nao encontrado' });
+      const where = { projectId };
+      if (type === 'atividade' || type === 'tarefa') where.type = type;
+      const tasks = await prisma.task.findMany({ where, select: { id: true } });
+      const ids = tasks.map(t => t.id);
+      if (ids.length) {
+        await prisma.document.deleteMany({ where: { taskId: { in: ids } } });
+        await prisma.task.deleteMany({ where: { parentId: { in: ids } } });
+        await prisma.task.deleteMany({ where: { id: { in: ids } } });
+      }
+      return sendJSON(res, 200, { deleted: ids.length });
     }
 
     if (req.url.startsWith('/api/v1/tasks/') && req.method === 'DELETE') {
       const id = req.url.split('/')[4];
+      await prisma.document.deleteMany({ where: { taskId: id } });
+      await prisma.task.deleteMany({ where: { parentId: id } });
       await prisma.task.delete({ where: { id } });
       return sendJSON(res, 200, { success: true });
     }
@@ -614,18 +722,18 @@ const server = http.createServer(async (req, res) => {
     // ============ USUARIOS / EQUIPE ============
     if (req.url === '/api/v1/users' && req.method === 'GET') {
       const users = await prisma.user.findMany({ where: { organizationId: user.organizationId }, orderBy: { createdAt: 'asc' } });
-      return sendJSON(res, 200, users.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role, createdAt: u.createdAt })));
+      return sendJSON(res, 200, users.map(u => ({ id: u.id, name: u.name, email: u.email, phone: u.phone, role: u.role, createdAt: u.createdAt })));
     }
 
     if (req.url === '/api/v1/users' && req.method === 'POST') {
       if (user.role !== 'admin') return sendJSON(res, 403, { error: 'Apenas administradores podem convidar usuarios' });
-      const { name, email, password, role } = await parseBody(req);
+      const { name, email, password, role, phone } = await parseBody(req);
       if (!name || !email || !password) return sendJSON(res, 400, { error: 'Nome, email e senha sao obrigatorios' });
       if (password.length < 6) return sendJSON(res, 400, { error: 'Senha deve ter no minimo 6 caracteres' });
       const exist = await prisma.user.findUnique({ where: { email } });
       if (exist) return sendJSON(res, 400, { error: 'Email ja cadastrado' });
       const hash = await bcrypt.hash(password, 10);
-      const newUser = await prisma.user.create({ data: { name, email, passwordHash: hash, role: role || 'user', organizationId: user.organizationId } });
+      const newUser = await prisma.user.create({ data: { name, email, phone: phone || null, passwordHash: hash, role: role || 'user', organizationId: user.organizationId } });
       return sendJSON(res, 201, { id: newUser.id, name: newUser.name, email: newUser.email, role: newUser.role });
     }
 
@@ -788,14 +896,14 @@ const server = http.createServer(async (req, res) => {
     // ============ DOCUMENTOS ============
     if (req.url === '/api/v1/documents' && req.method === 'GET') {
       const docs = await prisma.document.findMany({ where: { project: { organizationId: user.organizationId } }, include: { project: true }, orderBy: { createdAt: 'desc' } });
-      return sendJSON(res, 200, docs.map(d => ({ id: d.id, filename: d.filename, mimeType: d.mimeType, uploadedBy: d.uploadedBy, createdAt: d.createdAt, projectId: d.projectId, projectName: d.project.name, size: d.data.length })));
+      return sendJSON(res, 200, docs.map(d => ({ id: d.id, filename: d.filename, mimeType: d.mimeType, uploadedBy: d.uploadedBy, createdAt: d.createdAt, projectId: d.projectId, projectName: d.project.name, taskId: d.taskId, size: d.data.length })));
     }
 
     if (req.url === '/api/v1/documents' && req.method === 'POST') {
-      const { filename, mimeType, data, projectId } = await parseBody(req);
+      const { filename, mimeType, data, projectId, taskId } = await parseBody(req);
       if (!filename || !data || !projectId) return sendJSON(res, 400, { error: 'Arquivo, nome e projeto sao obrigatorios' });
-      const doc = await prisma.document.create({ data: { filename, mimeType: mimeType || 'application/octet-stream', data, uploadedBy: user.userId, projectId } });
-      return sendJSON(res, 201, { id: doc.id, filename: doc.filename, mimeType: doc.mimeType, createdAt: doc.createdAt });
+      const doc = await prisma.document.create({ data: { filename, mimeType: mimeType || 'application/octet-stream', data, uploadedBy: user.userId, projectId, taskId: taskId || null } });
+      return sendJSON(res, 201, { id: doc.id, filename: doc.filename, mimeType: doc.mimeType, createdAt: doc.createdAt, taskId: doc.taskId });
     }
 
     if (req.url.match(/^\/api\/v1\/documents\/[^\/]+\/download$/) && req.method === 'GET') {
