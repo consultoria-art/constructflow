@@ -13,6 +13,20 @@ if (!JWT_SECRET) {
   console.warn('AVISO DE SEGURANCA: variavel de ambiente JWT_SECRET nao configurada. Um segredo aleatorio foi gerado automaticamente para esta execucao, mas todos os usuarios serao desconectados a cada reinicio do servidor. Configure JWT_SECRET no Railway com um valor fixo e aleatorio o quanto antes.');
 }
 const stripe = process.env.STRIPE_SECRET_KEY ? require('stripe')(process.env.STRIPE_SECRET_KEY) : null;
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+const AI_SYSTEM_PROMPT = `Voce e o assistente de ajuda da plataforma ConstructFlow, um software de gestao de obras. Responda SEMPRE em portugues do Brasil, de forma curta, direta e pratica, guiando o usuario pelo passo a passo dentro da propria plataforma. Nao invente funcionalidades que nao existem. Aqui esta o mapa da plataforma:
+
+- Visao Geral: painel com KPIs, grafico de cronograma geral, alertas automaticos de desvio. Graficos de pizza financeiros e previsao de receita mensal so aparecem para o Administrador (dono da conta).
+- Projetos: cadastro de obras. Botao "+ Novo Projeto" cria um projeto, com opcao de anexar uma planilha completa (varias abas) que distribui automaticamente para Tarefas, Despesas e Riscos. Botao "Complementar Projeto" faz o mesmo em um projeto ja existente. Tem tambem a Curva S e o Cronograma da Obra (Gantt por Atividade) com 4 cores: Planejado (cinza), Realizado (verde), Atrasado (vermelho), Replanejado (roxo).
+- Tarefas: quadro Kanban (arrastar e soltar) com 3 colunas (Pendente, Em Andamento, Concluida). Aqui ficam APENAS tarefas internas de recurso (ex: solicitar um equipamento para Suprimentos), nao as atividades de obra da planilha de servicos (essas ficam no Cronograma, dentro de Projetos).
+- Suprimentos: controle de materiais, entradas e saidas, com alerta automatico se sair mais material do que entrou.
+- Despesas: lancamento de gastos gerais do projeto. So visivel para Administrador e Coordenador.
+- Riscos e Pendencias: registro de riscos (com probabilidade/impacto) e pendencias, com destaque automatico de pontos criticos.
+- Equipe: convidar e remover usuarios. Niveis de acesso: Administrador (tudo), Coordenador (tudo, menos algumas restricoes futuras), Engenheiro (tudo exceto dados financeiros).
+- Configuracoes: editar nome da organizacao e ver a assinatura (plano/status de pagamento).
+- Assinatura: pagamentos processados via Stripe. Planos Basico, Pro e Enterprise.
+
+Se o usuario perguntar algo fora do escopo da plataforma, ou tiver um problema tecnico que voce nao consegue resolver por texto, oriente a usar o botao "Fale Conosco" para contato direto com o suporte.`;
 const APP_URL = process.env.APP_URL || '';
 
 const PLANS = {
@@ -331,6 +345,26 @@ const server = http.createServer(async (req, res) => {
       const u = await prisma.user.findUnique({ where: { id: user.userId }, include: { organization: true } });
       if (!u) return sendJSON(res, 404, { error: 'Usuario nao encontrado' });
       return sendJSON(res, 200, { id: u.id, name: u.name, email: u.email, role: u.role, organization: { id: u.organization.id, name: u.organization.name, slug: u.organization.slug } });
+    }
+
+    if (req.url === '/api/v1/ai/chat' && req.method === 'POST') {
+      if (!ANTHROPIC_API_KEY) return sendJSON(res, 500, { error: 'Assistente de IA nao configurado (ANTHROPIC_API_KEY ausente)' });
+      const { message, history } = await parseBody(req);
+      if (!message) return sendJSON(res, 400, { error: 'Mensagem vazia' });
+      try {
+        const messages = (Array.isArray(history) ? history : []).concat([{ role: 'user', content: String(message).slice(0, 2000) }]).slice(-20);
+        const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 500, system: AI_SYSTEM_PROMPT, messages })
+        });
+        const data = await aiRes.json();
+        if (!aiRes.ok) throw new Error((data.error && data.error.message) || 'Erro no assistente de IA');
+        const reply = (data.content || []).map(c => c.text || '').join('');
+        return sendJSON(res, 200, { reply });
+      } catch (e) {
+        return sendJSON(res, 500, { error: e.message });
+      }
     }
 
     if (req.url === '/api/v1/billing/plans' && req.method === 'GET') {
