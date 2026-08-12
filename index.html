@@ -1444,7 +1444,12 @@ async function renderActivityGantt() {
         replanBarHtml = '<div class="gantt-realized" style="left:' + replanLeftPct + '%;width:' + replanWidthPct + '%;background:#a855f7;top:0;"></div>';
       }
 
-      const realizadoLabel = hasActualDates ? (t.actualEndDate ? 'concluido em ' + fmtDate(t.actualEndDate) : 'em execucao desde ' + fmtDate(t.actualStartDate)) : progress + '%';
+      const isFutureActual = t.actualEndDate && new Date(t.actualEndDate) > now;
+      const realizadoLabel = hasActualDates
+        ? (t.actualEndDate
+            ? (isFutureActual ? 'previsto concluir em ' + fmtDate(t.actualEndDate) + ' (' + progress + '%)' : 'concluido em ' + fmtDate(t.actualEndDate))
+            : 'em execucao desde ' + fmtDate(t.actualStartDate))
+        : progress + '%';
       html += '<div class="gantt-row" style="cursor:pointer;" onclick="editTask(\'' + t.id + '\')">'
         + '<div class="gantt-row-label">' + (t.isMilestone ? '⭐ ' : '') + esc(t.title) + ' &middot; ' + realizadoLabel + (replanEnd ? ' &middot; replanejado p/ ' + fmtDate(replanEnd) : '') + '</div>'
         + '<div class="gantt-track-real">'
@@ -1866,7 +1871,7 @@ async function loadKanban() {
     ]);
     const allTasksRaw = await taskRes.json();
     cachedProjects = await projRes.json();
-    const allTasks = allTasksRaw.filter(t => t.type !== 'atividade');
+    const allTasks = allTasksRaw;
     window._cachedTasks = allTasksRaw;
 
     const bulkSel = document.getElementById('bulkDeleteProjectSelect');
@@ -1915,8 +1920,9 @@ function renderKanbanColumn(status, containerId, countId, tasks) {
   c.innerHTML = filtered.map(t => {
     const prioLabel = { low: 'Baixa', medium: 'Media', high: 'Alta' }[t.priority] || t.priority;
     const childBadge = t._childCount ? '<span class="deviation-badge" style="background:#dbeafe;color:#1e40af;">' + t._childCount + ' subitens</span>' : '';
+    const tipoBadge = t.type === 'atividade' ? '<span class="deviation-badge" style="background:#ede9fe;color:#6b21a8;">🏗️ Setor de Obra</span>' : '';
     return '<div class="kanban-card" draggable="true" ondragstart="onKanbanDragStart(event, \'' + t.id + '\')" onclick="editTask(\'' + t.id + '\')">'
-      + '<div class="kc-title">' + (t.isMilestone ? '⭐ ' : '') + esc(t.title) + childBadge + '</div>'
+      + '<div class="kc-title">' + (t.isMilestone ? '⭐ ' : '') + esc(t.title) + tipoBadge + childBadge + '</div>'
       + '<div class="kc-meta">' + (t.project ? t.project.name : '') + ' &middot; ' + prioLabel + (t.assignee ? ' &middot; ' + esc(t.assignee.name) : '') + (t.deadline ? ' &middot; ' + fmtDate(t.deadline) : '') + (canSeeFinanceUI() && t.cost ? ' &middot; ' + fmtMoney(t.cost) : '') + '</div>'
       + '<div class="cost-track" style="margin-top:6px;height:6px;"><div class="cost-fill cost-fill-blue" style="width:' + (t.progress || 0) + '%"></div></div>'
       + '</div>';
