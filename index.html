@@ -502,8 +502,9 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <label class="field">Prazo</label>
 <input id="inputDeadline" type="date" class="input">
 <label class="field">Anexar planilha completa do projeto (opcional)</label>
-<input id="projectMasterSheet" type="file" accept=".xlsx,.xls" class="input">
-<p class="import-hint">A planilha pode ter varias abas (Tarefas, Despesas, Riscos). A plataforma distribui cada aba automaticamente para o modulo certo.</p>
+<input id="projectMasterSheet" type="file" accept=".xlsx,.xls" class="input" onchange="analyzeProjectMasterSheet(this)">
+<p class="import-hint">A planilha pode ter varias abas (Tarefas, Despesas, Riscos). Confira abaixo o que sera importado antes de salvar.</p>
+<div id="projectMasterSheetSummary" style="max-height:220px;overflow-y:auto;"></div>
 <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
 <button class="btn btn-secondary" onclick="closeModal('projectModal')">Cancelar</button>
 <button class="btn btn-primary" onclick="saveProject()">Salvar</button>
@@ -1502,6 +1503,8 @@ function renderCurvaS() {
     + '</div>' + svg;
 }
 
+let projectMasterSheetInfos = [];
+
 async function openProjectModal() {
   editingProjectId = null;
   document.getElementById('projectModalTitle').textContent = 'Novo Projeto';
@@ -1516,7 +1519,23 @@ async function openProjectModal() {
   document.getElementById('inputDeadline').value = '';
   document.getElementById('projectFinanceFields').classList.toggle('hidden', !canSeeFinanceUI());
   document.getElementById('projectMasterSheet').value = '';
+  document.getElementById('projectMasterSheetSummary').innerHTML = '';
+  projectMasterSheetInfos = [];
   document.getElementById('projectModal').style.display = 'flex';
+}
+
+function analyzeProjectMasterSheet(input) {
+  const file = input.files[0];
+  if (!file) { projectMasterSheetInfos = []; document.getElementById('projectMasterSheetSummary').innerHTML = ''; return; }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      projectMasterSheetInfos = analyzeWorkbookSheets(wb, 'multi');
+      renderSheetChecklist('projectMasterSheetSummary', projectMasterSheetInfos);
+    } catch (err) { alert('Erro ao ler planilha: ' + err.message); }
+  };
+  reader.readAsArrayBuffer(file);
 }
 
 async function editProject(id) {
@@ -1557,16 +1576,13 @@ async function saveProject() {
     if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Erro ao salvar'); }
     const savedProject = await res.json();
     const masterFile = document.getElementById('projectMasterSheet').files[0];
+    const selected = masterFile ? getCheckedSheetIndexes('projectMasterSheetSummary', projectMasterSheetInfos).filter(s => s.recognized) : [];
     closeModal('projectModal');
-    if (masterFile) {
-      const result = await processMasterSpreadsheet(savedProject.id, masterFile);
-      if (result.error) {
-        alert('Projeto salvo, mas houve erro ao ler a planilha: ' + result.error);
-      } else {
-        let msg = 'Projeto salvo. Planilha distribuida automaticamente: ' + result.groupsCreated + ' grupo(s) de servico com ' + result.tasksCreated + ' subitem(ns), ' + result.expensesCreated + ' despesa(s), ' + result.risksCreated + ' risco(s)/pendencia(s).';
-        if (result.unrecognized.length) msg += ' Abas nao reconhecidas (ignoradas): ' + result.unrecognized.join(', ') + '.';
-        alert(msg);
-      }
+    if (masterFile && selected.length) {
+      const r = await executeSheetImports(selected, savedProject.id);
+      alert('Projeto salvo. Planilha distribuida: ' + r.groupsCreated + ' grupo(s) de servico com ' + r.tasksCreated + ' subitem(ns), ' + r.expensesCreated + ' despesa(s), ' + r.risksCreated + ' risco(s)/pendencia(s).');
+    } else if (masterFile && !selected.length) {
+      alert('Projeto salvo, mas nenhuma aba da planilha foi marcada para importar.');
     }
     loadProjetosView();
   } catch (e) { error.textContent = e.message; error.style.display = 'block'; }
@@ -1706,63 +1722,6 @@ function genericFindHeaderRow(aoa) {
   return bestScore >= 2 ? bestRow : -1;
 }
 
-async function processMasterSpreadsheet(projectId, file) {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const wb = XLSX.read(e.target.result, { type: 'array' });
-        let tasksCreated = 0, groupsCreated = 0, expensesCreated = 0, risksCreated = 0;
-        const unrecognized = [];
-        for (const sheetName of wb.SheetNames) {
-          const sheet = wb.Sheets[sheetName];
-          const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
-          if (!aoa.length) continue;
-          const headerRowIndex = genericFindHeaderRow(aoa);
-          if (headerRowIndex === -1) { unrecognized.push(sheetName); continue; }
-          const headerRow = (aoa[headerRowIndex] || []).map(h => String(h || '').trim()).filter(h => h);
-          const target = detectSheetTarget(sheetName, headerRow);
-
-          if (target === 'tasks') {
-            const result = boqParseSheetGrouped(sheetName, aoa);
-            if (!result.recognized || !result.groups.length) { unrecognized.push(sheetName); continue; }
-            for (const group of result.groups) {
-              const groupCost = group.items.reduce((s, i) => s + i.cost, 0);
-              const groupDates = groupDateRange(group.items);
-              const res = await fetch(API + '/api/v1/tasks', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ title: group.title, description: 'Grupo importado da planilha (' + group.items.length + ' subitens)', type: 'atividade', status: 'pending', priority: 'medium', cost: groupCost, startDate: groupDates.startDate, deadline: groupDates.deadline, projectId }) });
-              const createdGroup = await res.json();
-              if (!res.ok) continue;
-              groupsCreated++;
-              const childRows = group.items.map(item => ({ ...item, type: 'atividade', projectId, parentId: createdGroup.id }));
-              const res2 = await fetch(API + '/api/v1/tasks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: childRows }) });
-              const d2 = await res2.json();
-              tasksCreated += d2.created || 0;
-            }
-          } else if (target === 'expenses' || target === 'risks') {
-            const rows = XLSX.utils.sheet_to_json(sheet, { range: headerRowIndex, defval: '' });
-            if (!rows.length) { unrecognized.push(sheetName); continue; }
-            if (target === 'expenses') {
-              const normalized = transformRowsGeneric(rows, EXPENSE_FIELDS).filter(o => o.description && o.amount).map(o => ({ ...o, projectId }));
-              const res = await fetch(API + '/api/v1/expenses/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: normalized }) });
-              const d = await res.json();
-              expensesCreated += d.created || 0;
-            } else {
-              const normalized = transformRowsGeneric(rows, RISK_FIELDS).filter(o => o.title).map(o => ({ ...o, projectId }));
-              const res = await fetch(API + '/api/v1/risks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: normalized }) });
-              const d = await res.json();
-              risksCreated += d.created || 0;
-            }
-          } else {
-            unrecognized.push(sheetName);
-          }
-        }
-        resolve({ tasksCreated, groupsCreated, expensesCreated, risksCreated, unrecognized });
-      } catch (err) { resolve({ error: err.message }); }
-    };
-    reader.readAsArrayBuffer(file);
-  });
-}
-
 let importContext = { target: null, headers: [], rows: [], fieldDefs: [] };
 
 function openImportMapping(target, headers, rows) {
@@ -1834,6 +1793,37 @@ function analyzeComplementFile(input) {
   reader.readAsArrayBuffer(file);
 }
 
+async function executeSheetImports(selected, projectId) {
+  let groupsCreated = 0, tasksCreated = 0, expensesCreated = 0, risksCreated = 0;
+  for (const sheetInfo of selected) {
+    if (sheetInfo.target === 'tasks') {
+      for (const group of sheetInfo.groups) {
+        const groupCost = group.items.reduce((s, i) => s + i.cost, 0);
+        const groupDates = groupDateRange(group.items);
+        const res = await fetch(API + '/api/v1/tasks', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ title: group.title, description: 'Grupo importado da planilha (' + group.items.length + ' subitens)', type: 'atividade', status: 'pending', priority: 'medium', cost: groupCost, startDate: groupDates.startDate, deadline: groupDates.deadline, projectId }) });
+        const createdGroup = await res.json();
+        if (!res.ok) continue;
+        groupsCreated++;
+        const childRows = group.items.map(item => ({ ...item, type: 'atividade', projectId, parentId: createdGroup.id }));
+        const res2 = await fetch(API + '/api/v1/tasks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: childRows }) });
+        const d2 = await res2.json();
+        tasksCreated += d2.created || 0;
+      }
+    } else if (sheetInfo.target === 'expenses') {
+      const normalized = transformRowsGeneric(sheetInfo.rows, EXPENSE_FIELDS).filter(o => o.description && o.amount).map(o => ({ ...o, projectId }));
+      const res = await fetch(API + '/api/v1/expenses/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: normalized }) });
+      const d = await res.json();
+      expensesCreated += d.created || 0;
+    } else if (sheetInfo.target === 'risks') {
+      const normalized = transformRowsGeneric(sheetInfo.rows, RISK_FIELDS).filter(o => o.title).map(o => ({ ...o, projectId }));
+      const res = await fetch(API + '/api/v1/risks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: normalized }) });
+      const d = await res.json();
+      risksCreated += d.created || 0;
+    }
+  }
+  return { groupsCreated, tasksCreated, expensesCreated, risksCreated };
+}
+
 async function confirmComplement() {
   const projectId = document.getElementById('complementProjectSelect').value;
   const error = document.getElementById('complementError');
@@ -1845,35 +1835,9 @@ async function confirmComplement() {
   btn.textContent = 'Importando, aguarde...';
   btn.disabled = true;
   try {
-    let groupsCreated = 0, tasksCreated = 0, expensesCreated = 0, risksCreated = 0;
-    for (const sheetInfo of selected) {
-      if (sheetInfo.target === 'tasks') {
-        for (const group of sheetInfo.groups) {
-          const groupCost = group.items.reduce((s, i) => s + i.cost, 0);
-          const groupDates = groupDateRange(group.items);
-          const res = await fetch(API + '/api/v1/tasks', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ title: group.title, description: 'Grupo importado da planilha (' + group.items.length + ' subitens)', type: 'atividade', status: 'pending', priority: 'medium', cost: groupCost, startDate: groupDates.startDate, deadline: groupDates.deadline, projectId }) });
-          const createdGroup = await res.json();
-          if (!res.ok) continue;
-          groupsCreated++;
-          const childRows = group.items.map(item => ({ ...item, type: 'atividade', projectId, parentId: createdGroup.id }));
-          const res2 = await fetch(API + '/api/v1/tasks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: childRows }) });
-          const d2 = await res2.json();
-          tasksCreated += d2.created || 0;
-        }
-      } else if (sheetInfo.target === 'expenses') {
-        const normalized = transformRowsGeneric(sheetInfo.rows, EXPENSE_FIELDS).filter(o => o.description && o.amount).map(o => ({ ...o, projectId }));
-        const res = await fetch(API + '/api/v1/expenses/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: normalized }) });
-        const d = await res.json();
-        expensesCreated += d.created || 0;
-      } else if (sheetInfo.target === 'risks') {
-        const normalized = transformRowsGeneric(sheetInfo.rows, RISK_FIELDS).filter(o => o.title).map(o => ({ ...o, projectId }));
-        const res = await fetch(API + '/api/v1/risks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: normalized }) });
-        const d = await res.json();
-        risksCreated += d.created || 0;
-      }
-    }
+    const r = await executeSheetImports(selected, projectId);
     closeModal('complementModal');
-    alert('Projeto complementado: ' + groupsCreated + ' grupo(s) de servico com ' + tasksCreated + ' subitem(ns), ' + expensesCreated + ' despesa(s), ' + risksCreated + ' risco(s)/pendencia(s).');
+    alert('Projeto complementado: ' + r.groupsCreated + ' grupo(s) de servico com ' + r.tasksCreated + ' subitem(ns), ' + r.expensesCreated + ' despesa(s), ' + r.risksCreated + ' risco(s)/pendencia(s).');
     loadProjetosView();
   } catch (e) {
     error.textContent = 'Erro: ' + e.message;
