@@ -388,20 +388,10 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
       </select>
     </div>
     <input type="text" id="taskSearchInput" class="input" placeholder="Buscar tarefa por titulo (inclui subitens)..." oninput="loadKanban()" style="max-width:400px;">
-    <div class="kanban-board">
-      <div class="kanban-col" data-status="pending" ondragover="event.preventDefault(); this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="onKanbanDrop(event, 'pending')">
-        <h4>Pendente <span id="countPending">0</span></h4>
-        <div id="kanbanPending"></div>
-      </div>
-      <div class="kanban-col" data-status="in_progress" ondragover="event.preventDefault(); this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="onKanbanDrop(event, 'in_progress')">
-        <h4>Em Andamento <span id="countInProgress">0</span></h4>
-        <div id="kanbanInProgress"></div>
-      </div>
-      <div class="kanban-col" data-status="done" ondragover="event.preventDefault(); this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="onKanbanDrop(event, 'done')">
-        <h4>Concluida <span id="countDone">0</span></h4>
-        <div id="kanbanDone"></div>
-      </div>
+    <div style="margin:10px 0;">
+      <button class="btn btn-secondary btn-sm" onclick="openColumnModal()">+ Adicionar Coluna</button>
     </div>
+    <div class="kanban-board" id="kanbanBoardContainer" style="grid-template-columns: repeat(3, 1fr);"></div>
   </div>
 
   <!-- SUPRIMENTOS -->
@@ -538,11 +528,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <label class="field">Tarefa Pai (EAP - opcional)</label>
 <select id="taskParent" class="input"><option value="">Nenhuma (tarefa de topo)</option></select>
 <label class="field">Status</label>
-<select id="taskStatus" class="input">
-<option value="pending">Pendente</option>
-<option value="in_progress">Em andamento</option>
-<option value="done">Concluida</option>
-</select>
+<select id="taskStatus" class="input"></select>
 <label class="field">Prioridade</label>
 <select id="taskPriority" class="input">
 <option value="low">Baixa</option>
@@ -743,6 +729,25 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 
 <!-- MODAL BOQ -->
 <!-- MODAL COMPLEMENTAR PROJETO -->
+<!-- MODAL COLUNA DO KANBAN -->
+<div class="modal-overlay" id="columnModal">
+<div class="modal-box" style="width:380px;">
+<h2 style="margin-bottom:20px;" id="columnModalTitle">Nova Coluna</h2>
+<div class="error" id="columnError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+<label class="field">Nome da coluna</label>
+<input id="columnNameInput" type="text" class="input" placeholder="Ex: Atrasado, Em Revisao, Aguardando Material">
+<label class="field">Cor</label>
+<input id="columnColorInput" type="color" class="input" value="#6b7280" style="height:44px;padding:4px;">
+<div style="display:flex;gap:12px;justify-content:space-between;margin-top:20px;">
+<button class="btn btn-danger hidden" id="columnDeleteBtn" onclick="deleteColumn()">Excluir Coluna</button>
+<div style="display:flex;gap:12px;margin-left:auto;">
+<button class="btn btn-secondary" onclick="closeModal('columnModal')">Cancelar</button>
+<button class="btn btn-primary" onclick="saveColumn()">Salvar</button>
+</div>
+</div>
+</div>
+</div>
+
 <div class="modal-overlay" id="complementModal">
 <div class="modal-box" style="width:560px;">
 <h2 style="margin-bottom:8px;">Complementar Projeto Existente</h2>
@@ -1248,7 +1253,8 @@ function renderGantt(projects) {
   let html = '<div class="gantt-legend">'
     + '<span><span class="cal-legend-dot" style="background:#d1d5db;"></span>Planejado</span>'
     + '<span><span class="cal-legend-dot" style="background:#22c55e;"></span>Realizado (no ritmo)</span>'
-    + '<span><span class="cal-legend-dot" style="background:#ef4444;"></span>Realizado (atrasado)</span>'
+    + '<span><span class="cal-legend-dot" style="background:#ef4444;"></span>Atrasado</span>'
+    + '<span><span class="cal-legend-dot" style="background:#a855f7;"></span>Replanejado</span>'
     + '</div>';
   html += '<div class="gantt-scale-labels"><span>' + minDate.toLocaleDateString('pt-BR') + '</span><span>' + maxDate.toLocaleDateString('pt-BR') + '</span></div>';
   html += '<div class="gantt-real">';
@@ -1259,11 +1265,22 @@ function renderGantt(projects) {
     const e = new Date(p.deadline || now);
     const leftPct = ((s - minDate) / totalMs) * 100;
     const widthPct = Math.max(1, ((e - s) / totalMs) * 100);
-    const tasks = p.tasks || [];
-    const avgProgress = tasks.length ? Math.round(tasks.reduce((sum, t) => sum + (t.progress || 0), 0) / tasks.length) : (p.status === 'completed' ? 100 : 0);
-    const isLate = (e < now && p.status !== 'completed') || p.status === 'delayed';
-    const isReprojetado = p.status === 'reprojetado';
-    const realizedColor = isLate ? '#ef4444' : isReprojetado ? '#a855f7' : '#22c55e';
+    const allTasks = p.tasks || [];
+    const relevantTasks = allTasks.filter(t => t.type === 'atividade' && !t.parentId);
+    const tasksForProgress = relevantTasks.length ? relevantTasks : allTasks;
+    const avgProgress = tasksForProgress.length ? Math.round(tasksForProgress.reduce((sum, t) => sum + (t.progress || 0), 0) / tasksForProgress.length) : (p.status === 'completed' ? 100 : 0);
+
+    const hasOverdueTask = tasksForProgress.some(t => {
+      const effDeadline = t.replannedDeadline ? new Date(t.replannedDeadline) : (t.deadline ? new Date(t.deadline) : null);
+      if (!effDeadline) return false;
+      const doneInPast = t.actualEndDate && new Date(t.actualEndDate) <= now;
+      return effDeadline < now && !doneInPast && (t.progress || 0) < 100;
+    });
+    const hasReplan = tasksForProgress.some(t => t.replannedDeadline);
+
+    const isLate = hasOverdueTask || (e < now && p.status !== 'completed' && avgProgress < 100) || p.status === 'delayed';
+    const isReprojetado = !isLate && (hasReplan || p.status === 'reprojetado');
+    const realizedColor = isLate ? '#ef4444' : isReprojetado ? '#a855f7' : (avgProgress > 0 ? '#22c55e' : '#d1d5db');
     const realizedWidthPct = widthPct * (avgProgress / 100);
 
     html += '<div class="gantt-row">'
@@ -1904,6 +1921,14 @@ async function exportProjects() {
 }
 
 // ============ TAREFAS - KANBAN ============
+let cachedTaskColumns = [];
+
+async function loadTaskColumns() {
+  const res = await fetch(API + '/api/v1/task-columns', { headers: apiHeaders() });
+  cachedTaskColumns = await res.json();
+  return cachedTaskColumns;
+}
+
 async function loadKanban() {
   try {
     const [taskRes, projRes] = await Promise.all([
@@ -1914,6 +1939,7 @@ async function loadKanban() {
     cachedProjects = await projRes.json();
     const allTasks = allTasksRaw;
     window._cachedTasks = allTasksRaw;
+    await loadTaskColumns();
 
     const bulkSel = document.getElementById('bulkDeleteProjectSelect');
     const prevBulkVal = bulkSel.value;
@@ -1936,9 +1962,19 @@ async function loadKanban() {
       tasksToShow = allTasks.filter(t => !t.parentId).map(t => ({ ...t, _childCount: childCount[t.id] || 0 }));
     }
 
-    renderKanbanColumn('pending', 'kanbanPending', 'countPending', tasksToShow);
-    renderKanbanColumn('in_progress', 'kanbanInProgress', 'countInProgress', tasksToShow);
-    renderKanbanColumn('done', 'kanbanDone', 'countDone', tasksToShow);
+    const board = document.getElementById('kanbanBoardContainer');
+    board.style.gridTemplateColumns = 'repeat(' + cachedTaskColumns.length + ', 1fr)';
+    board.innerHTML = cachedTaskColumns.map(col => (
+      '<div class="kanban-col" data-status="' + col.id + '" style="border-top:3px solid ' + col.color + ';" ondragover="event.preventDefault(); this.classList.add(\'dragover\')" ondragleave="this.classList.remove(\'dragover\')" ondrop="onKanbanDrop(event, \'' + col.id + '\')">'
+      + '<h4 style="display:flex;justify-content:space-between;align-items:center;">'
+      + '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + col.color + ';margin-right:6px;"></span>' + esc(col.name) + ' <span id="count-' + col.id + '">0</span></span>'
+      + '<span style="cursor:pointer;font-size:13px;color:#9ca3af;" onclick="openColumnModal(\'' + col.id + '\')">⚙️</span>'
+      + '</h4>'
+      + '<div id="kanban-' + col.id + '"></div>'
+      + '</div>'
+    )).join('');
+
+    cachedTaskColumns.forEach(col => renderKanbanColumn(col.id, 'kanban-' + col.id, 'count-' + col.id, tasksToShow));
   } catch (e) { console.error(e); }
 }
 
@@ -1993,6 +2029,56 @@ async function onKanbanDrop(ev, newStatus) {
   } catch (e) { alert('Erro ao mover tarefa'); }
 }
 
+let editingColumnId = null;
+
+function openColumnModal(columnId) {
+  editingColumnId = columnId || null;
+  const errorEl = document.getElementById('columnError');
+  errorEl.style.display = 'none';
+  if (columnId) {
+    const col = cachedTaskColumns.find(c => c.id === columnId);
+    document.getElementById('columnModalTitle').textContent = 'Editar Coluna';
+    document.getElementById('columnNameInput').value = col ? col.name : '';
+    document.getElementById('columnColorInput').value = col ? col.color : '#6b7280';
+    document.getElementById('columnDeleteBtn').classList.remove('hidden');
+  } else {
+    document.getElementById('columnModalTitle').textContent = 'Nova Coluna';
+    document.getElementById('columnNameInput').value = '';
+    document.getElementById('columnColorInput').value = '#6b7280';
+    document.getElementById('columnDeleteBtn').classList.add('hidden');
+  }
+  document.getElementById('columnModal').style.display = 'flex';
+}
+
+async function saveColumn() {
+  const name = document.getElementById('columnNameInput').value.trim();
+  const color = document.getElementById('columnColorInput').value;
+  const errorEl = document.getElementById('columnError');
+  if (!name) { errorEl.textContent = 'Nome e obrigatorio'; errorEl.style.display = 'block'; return; }
+  try {
+    if (editingColumnId) {
+      await fetch(API + '/api/v1/task-columns/' + editingColumnId, { method: 'PUT', headers: apiHeaders(), body: JSON.stringify({ name, color }) });
+    } else {
+      const res = await fetch(API + '/api/v1/task-columns', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ name, color }) });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+    }
+    closeModal('columnModal');
+    loadKanban();
+  } catch (e) { errorEl.textContent = 'Erro: ' + e.message; errorEl.style.display = 'block'; }
+}
+
+async function deleteColumn() {
+  if (!editingColumnId) return;
+  if (!confirm('Excluir esta coluna? So funciona se ela estiver vazia.')) return;
+  const errorEl = document.getElementById('columnError');
+  try {
+    const res = await fetch(API + '/api/v1/task-columns/' + editingColumnId, { method: 'DELETE', headers: apiHeaders() });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+    closeModal('columnModal');
+    loadKanban();
+  } catch (e) { errorEl.textContent = e.message; errorEl.style.display = 'block'; }
+}
+
 function fillTaskProjectSelect(selectedId) {
   const sel = document.getElementById('taskProject');
   sel.innerHTML = cachedProjects.map(p => '<option value="' + p.id + '"' + (p.id === selectedId ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('');
@@ -2007,7 +2093,8 @@ async function openTaskModal() {
   fillTaskParentSelect(null, null);
   await loadUsersCache();
   fillTaskAssigneeSelect(null);
-  document.getElementById('taskStatus').value = 'pending';
+  if (!cachedTaskColumns.length) await loadTaskColumns();
+  document.getElementById('taskStatus').innerHTML = cachedTaskColumns.map(c => '<option value="' + c.id + '">' + esc(c.name) + '</option>').join('');
   document.getElementById('taskPriority').value = 'medium';
   document.getElementById('taskStartDate').value = '';
   document.getElementById('taskDeadline').value = '';
@@ -2050,7 +2137,8 @@ async function editTask(id) {
   fillTaskParentSelect(t.projectId, t.parentId);
   await loadUsersCache();
   fillTaskAssigneeSelect(t.assigneeId);
-  document.getElementById('taskStatus').value = t.status || 'pending';
+  if (!cachedTaskColumns.length) await loadTaskColumns();
+  document.getElementById('taskStatus').innerHTML = cachedTaskColumns.map(c => '<option value="' + c.id + '"' + (c.id === t.status ? ' selected' : '') + '>' + esc(c.name) + '</option>').join('');
   document.getElementById('taskPriority').value = t.priority || 'medium';
   document.getElementById('taskStartDate').value = t.startDate ? t.startDate.substring(0, 10) : '';
   document.getElementById('taskDeadline').value = t.deadline ? t.deadline.substring(0, 10) : '';
