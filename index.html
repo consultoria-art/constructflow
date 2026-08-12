@@ -731,18 +731,19 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <!-- MODAL BOQ -->
 <!-- MODAL COMPLEMENTAR PROJETO -->
 <div class="modal-overlay" id="complementModal">
-<div class="modal-box" style="width:520px;">
+<div class="modal-box" style="width:560px;">
 <h2 style="margin-bottom:8px;">Complementar Projeto Existente</h2>
 <p style="font-size:12px;color:#6b7280;margin-bottom:16px;">Escolha o projeto que vai receber as informacoes desta planilha. Nenhum projeto novo sera criado.</p>
 <div class="error" id="complementError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
 <label class="field">Projeto</label>
 <select id="complementProjectSelect" class="input"></select>
 <label class="field">Planilha</label>
-<input type="file" id="complementFileInput" accept=".xlsx,.xls" class="input">
-<p class="import-hint">Pode ter varias abas (Tarefas, Despesas, Riscos). A plataforma detecta automaticamente cada aba e distribui as informacoes dentro do projeto escolhido.</p>
+<input type="file" id="complementFileInput" accept=".xlsx,.xls" class="input" onchange="analyzeComplementFile(this)">
+<p class="import-hint">Pode ter varias abas (Tarefas, Despesas, Riscos). A plataforma analisa cada aba e mostra abaixo o que sera importado, antes de confirmar.</p>
+<div id="complementSummary" style="max-height:280px;overflow-y:auto;"></div>
 <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;">
 <button class="btn btn-secondary" onclick="closeModal('complementModal')">Cancelar</button>
-<button class="btn btn-primary" id="complementConfirmBtn" onclick="confirmComplement()">Importar para este Projeto</button>
+<button class="btn btn-primary" id="complementConfirmBtn" style="display:none;" onclick="confirmComplement()">Importar para este Projeto</button>
 </div>
 </div>
 </div>
@@ -754,7 +755,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <div class="error" id="boqError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
 <label class="field">Projeto</label>
 <select id="boqProjectSelect" class="input"></select>
-<div id="boqSummary"></div>
+<div id="boqSummary" style="max-height:280px;overflow-y:auto;"></div>
 <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;">
 <button class="btn btn-secondary" onclick="closeModal('boqModal')">Cancelar</button>
 <button class="btn btn-primary" id="boqConfirmBtn" style="display:none;" onclick="confirmBoqImport()">Importar Tarefas</button>
@@ -1804,37 +1805,82 @@ function confirmImportMapping() {
   doImportTasks(normalizedRows);
 }
 
+let complementSheetInfos = [];
+
 function openComplementModal() {
   if (!cachedProjects.length) { alert('Cadastre um projeto primeiro.'); return; }
   document.getElementById('complementProjectSelect').innerHTML = cachedProjects.map(p => '<option value="' + p.id + '">' + esc(p.name) + '</option>').join('');
   document.getElementById('complementFileInput').value = '';
+  document.getElementById('complementSummary').innerHTML = '';
+  document.getElementById('complementConfirmBtn').style.display = 'none';
   document.getElementById('complementError').style.display = 'none';
   document.getElementById('complementModal').style.display = 'flex';
 }
 
+function analyzeComplementFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      complementSheetInfos = analyzeWorkbookSheets(wb, 'multi');
+      renderSheetChecklist('complementSummary', complementSheetInfos);
+      const anyRecognized = complementSheetInfos.some(s => s.recognized);
+      document.getElementById('complementConfirmBtn').style.display = anyRecognized ? 'inline-block' : 'none';
+      document.getElementById('complementError').style.display = 'none';
+    } catch (err) { alert('Erro ao ler planilha: ' + err.message); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
 async function confirmComplement() {
   const projectId = document.getElementById('complementProjectSelect').value;
-  const file = document.getElementById('complementFileInput').files[0];
   const error = document.getElementById('complementError');
   const btn = document.getElementById('complementConfirmBtn');
   if (!projectId) { error.textContent = 'Selecione um projeto'; error.style.display = 'block'; return; }
-  if (!file) { error.textContent = 'Selecione uma planilha'; error.style.display = 'block'; return; }
+  const selected = getCheckedSheetIndexes('complementSummary', complementSheetInfos).filter(s => s.recognized);
+  if (!selected.length) { error.textContent = 'Marque pelo menos uma aba para importar'; error.style.display = 'block'; return; }
   error.style.display = 'none';
   btn.textContent = 'Importando, aguarde...';
   btn.disabled = true;
-  const result = await processMasterSpreadsheet(projectId, file);
+  try {
+    let groupsCreated = 0, tasksCreated = 0, expensesCreated = 0, risksCreated = 0;
+    for (const sheetInfo of selected) {
+      if (sheetInfo.target === 'tasks') {
+        for (const group of sheetInfo.groups) {
+          const groupCost = group.items.reduce((s, i) => s + i.cost, 0);
+          const groupDates = groupDateRange(group.items);
+          const res = await fetch(API + '/api/v1/tasks', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ title: group.title, description: 'Grupo importado da planilha (' + group.items.length + ' subitens)', type: 'atividade', status: 'pending', priority: 'medium', cost: groupCost, startDate: groupDates.startDate, deadline: groupDates.deadline, projectId }) });
+          const createdGroup = await res.json();
+          if (!res.ok) continue;
+          groupsCreated++;
+          const childRows = group.items.map(item => ({ ...item, type: 'atividade', projectId, parentId: createdGroup.id }));
+          const res2 = await fetch(API + '/api/v1/tasks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: childRows }) });
+          const d2 = await res2.json();
+          tasksCreated += d2.created || 0;
+        }
+      } else if (sheetInfo.target === 'expenses') {
+        const normalized = transformRowsGeneric(sheetInfo.rows, EXPENSE_FIELDS).filter(o => o.description && o.amount).map(o => ({ ...o, projectId }));
+        const res = await fetch(API + '/api/v1/expenses/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: normalized }) });
+        const d = await res.json();
+        expensesCreated += d.created || 0;
+      } else if (sheetInfo.target === 'risks') {
+        const normalized = transformRowsGeneric(sheetInfo.rows, RISK_FIELDS).filter(o => o.title).map(o => ({ ...o, projectId }));
+        const res = await fetch(API + '/api/v1/risks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: normalized }) });
+        const d = await res.json();
+        risksCreated += d.created || 0;
+      }
+    }
+    closeModal('complementModal');
+    alert('Projeto complementado: ' + groupsCreated + ' grupo(s) de servico com ' + tasksCreated + ' subitem(ns), ' + expensesCreated + ' despesa(s), ' + risksCreated + ' risco(s)/pendencia(s).');
+    loadProjetosView();
+  } catch (e) {
+    error.textContent = 'Erro: ' + e.message;
+    error.style.display = 'block';
+  }
   btn.textContent = 'Importar para este Projeto';
   btn.disabled = false;
-  if (result.error) {
-    error.textContent = 'Erro ao ler planilha: ' + result.error;
-    error.style.display = 'block';
-    return;
-  }
-  closeModal('complementModal');
-  let msg = 'Projeto complementado: ' + result.groupsCreated + ' grupo(s) de servico com ' + result.tasksCreated + ' subitem(ns), ' + result.expensesCreated + ' despesa(s), ' + result.risksCreated + ' risco(s)/pendencia(s).';
-  if (result.unrecognized.length) msg += ' Abas nao reconhecidas (ignoradas): ' + result.unrecognized.join(', ') + '.';
-  alert(msg);
-  loadProjetosView();
 }
 
 async function exportProjects() {
@@ -2226,7 +2272,7 @@ const BOQ_HEADER_KEYWORDS = {
   valorunit: ['valorunit', 'valorunitario', 'precounit', 'precounitario'],
   valortotal: ['valortotal', 'total', 'valor'],
   datainicio: ['datainicio', 'dtinicio', 'inicio', 'inicioprevisto', 'dataini', 'start'],
-  datafim: ['datafim', 'dtfim', 'datatermino', 'termino', 'prazo', 'dataentrega', 'entrega', 'fimprevisto', 'end', 'deadline'],
+  datafim: ['fim', 'datafim', 'dtfim', 'datatermino', 'termino', 'prazo', 'dataentrega', 'entrega', 'fimprevisto', 'end', 'deadline'],
   percentual: ['realizado', 'percentualrealizado', 'pctrealizado', 'avancofisico', 'percentual', 'avanco', 'conclusao']
 };
 
@@ -2263,19 +2309,76 @@ function boqFindHeaderRow(aoa) {
     const row = aoa[i];
     if (!row) continue;
     const cols = {};
+    const usedCols = new Set();
     let score = 0;
     row.forEach((cell, colIdx) => {
       const n = normKey(cell);
       if (!n) return;
       Object.entries(BOQ_HEADER_KEYWORDS).forEach(([field, keywords]) => {
         if (cols[field] !== undefined) return;
-        if (keywords.some(k => n === k || n.indexOf(k) > -1)) { cols[field] = colIdx; score++; }
+        if (usedCols.has(colIdx)) return;
+        if (keywords.some(k => n === k || n.indexOf(k) > -1)) { cols[field] = colIdx; usedCols.add(colIdx); score++; }
       });
     });
     if (score > bestScore) { bestScore = score; bestRow = i; bestCols = cols; }
   }
   if (bestScore < 2) return null;
   return { rowIndex: bestRow, cols: bestCols };
+}
+
+function analyzeWorkbookSheets(wb, mode) {
+  // mode: 'tasks-only' (Importar Lista de Servicos) ou 'multi' (Complementar Projeto)
+  const sheetInfos = [];
+  wb.SheetNames.forEach(sheetName => {
+    const sheet = wb.Sheets[sheetName];
+    const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+    if (!aoa.length) { sheetInfos.push({ name: sheetName, recognized: false, target: null, count: 0, note: 'Aba vazia' }); return; }
+
+    if (mode === 'tasks-only') {
+      const result = boqParseSheetGrouped(sheetName, aoa);
+      const totalItems = result.groups.reduce((s, g) => s + g.items.length, 0);
+      if (!result.recognized || !totalItems) { sheetInfos.push({ name: sheetName, recognized: false, target: null, count: 0, note: 'Nao parece ter servicos com descricao e valor/quantidade' }); return; }
+      sheetInfos.push({ name: sheetName, recognized: true, target: 'tasks', count: totalItems, groups: result.groups, note: result.groups.length + ' grupo(s), ' + totalItems + ' servico(s)' });
+    } else {
+      const headerRowIndex = genericFindHeaderRow(aoa);
+      if (headerRowIndex === -1) { sheetInfos.push({ name: sheetName, recognized: false, target: null, count: 0, note: 'Nao foi possivel identificar um cabecalho nesta aba' }); return; }
+      const headerRow = (aoa[headerRowIndex] || []).map(h => String(h || '').trim()).filter(h => h);
+      const target = detectSheetTarget(sheetName, headerRow);
+      if (target === 'tasks') {
+        const result = boqParseSheetGrouped(sheetName, aoa);
+        const totalItems = result.groups.reduce((s, g) => s + g.items.length, 0);
+        sheetInfos.push({ name: sheetName, recognized: totalItems > 0, target: 'tasks', count: totalItems, groups: result.groups, note: totalItems ? (result.groups.length + ' grupo(s), ' + totalItems + ' tarefa(s)') : 'Nenhum item valido encontrado' });
+      } else if (target === 'expenses' || target === 'risks') {
+        const rows = XLSX.utils.sheet_to_json(sheet, { range: headerRowIndex, defval: '' });
+        sheetInfos.push({ name: sheetName, recognized: rows.length > 0, target, count: rows.length, rows, note: rows.length + ' linha(s) - vai para ' + (target === 'expenses' ? 'Despesas' : 'Riscos e Pendencias') });
+      } else {
+        sheetInfos.push({ name: sheetName, recognized: false, target: null, count: 0, note: 'Nao foi possivel identificar o tipo de conteudo desta aba' });
+      }
+    }
+  });
+  return sheetInfos;
+}
+
+function renderSheetChecklist(containerId, sheetInfos) {
+  const c = document.getElementById(containerId);
+  c.innerHTML = '<p style="font-size:12px;color:#6b7280;margin-bottom:8px;">Confira o que cada aba contem antes de importar. Desmarque abas repetidas ou que voce nao quer trazer agora.</p>'
+    + sheetInfos.map((s, idx) => {
+      const targetLabel = s.target === 'tasks' ? 'Tarefas/Atividades' : s.target === 'expenses' ? 'Despesas' : s.target === 'risks' ? 'Riscos/Pendencias' : 'Nao reconhecida';
+      const badgeColor = s.target === 'tasks' ? '#dbeafe;color:#1e40af' : s.target === 'expenses' ? '#fef9c3;color:#854d0e' : s.target === 'risks' ? '#fee2e2;color:#991b1b' : '#f3f4f6;color:#6b7280';
+      return '<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid #f3f4f6;">'
+        + '<input type="checkbox" id="sheetCheck' + idx + '" data-sheetidx="' + idx + '" ' + (s.recognized ? 'checked' : 'disabled') + ' style="margin-top:3px;">'
+        + '<div style="flex:1;">'
+        + '<div style="font-size:13px;font-weight:600;">' + esc(s.name) + ' <span style="font-size:10px;font-weight:500;padding:2px 6px;border-radius:8px;background:' + badgeColor + ';margin-left:6px;">' + targetLabel + '</span></div>'
+        + '<div style="font-size:12px;color:#6b7280;">' + esc(s.note) + '</div>'
+        + '</div></div>';
+    }).join('');
+}
+
+function getCheckedSheetIndexes(containerId, sheetInfos) {
+  return sheetInfos.filter((s, idx) => {
+    const el = document.getElementById('sheetCheck' + idx);
+    return el && el.checked;
+  });
 }
 
 function boqParseSheetGrouped(sheetName, aoa) {
@@ -2338,7 +2441,7 @@ function boqParseSheetGrouped(sheetName, aoa) {
   return { groups: groups.filter(g => g.items.length), recognized: true };
 }
 
-let boqParsedGroups = [];
+let boqSheetInfos = [];
 
 function importBoq(input) {
   const file = input.files[0];
@@ -2347,27 +2450,11 @@ function importBoq(input) {
   reader.onload = (e) => {
     try {
       const wb = XLSX.read(e.target.result, { type: 'array' });
-      let allGroups = [];
-      let sheetsRecognized = 0, sheetsSkipped = [];
-      wb.SheetNames.forEach(name => {
-        const sheet = wb.Sheets[name];
-        const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
-        const result = boqParseSheetGrouped(name, aoa);
-        if (result.recognized && result.groups.length) { sheetsRecognized++; allGroups = allGroups.concat(result.groups); }
-        else if (!result.recognized) sheetsSkipped.push(name);
-      });
-      boqParsedGroups = allGroups;
-      const totalItems = allGroups.reduce((s, g) => s + g.items.length, 0);
-      const totalCost = allGroups.reduce((s, g) => s + g.items.reduce((s2, i) => s2 + i.cost, 0), 0);
+      boqSheetInfos = analyzeWorkbookSheets(wb, 'tasks-only');
       document.getElementById('boqProjectSelect').innerHTML = cachedProjects.map(p => '<option value="' + p.id + '">' + esc(p.name) + '</option>').join('');
-      const summary = document.getElementById('boqSummary');
-      summary.innerHTML = '<div class="card" style="margin-top:12px;background:#f9fafb;">'
-        + '<p style="font-size:13px;margin-bottom:4px;"><strong>' + allGroups.length + '</strong> tarefa(s) macro (setores) serao criadas, contendo <strong>' + totalItems + '</strong> subitem(ns) de servico ao todo.</p>'
-        + '<p style="font-size:13px;margin-bottom:4px;">Vindas de <strong>' + sheetsRecognized + '</strong> de ' + wb.SheetNames.length + ' aba(s).</p>'
-        + '<p style="font-size:13px;margin-bottom:4px;">Custo total somado: <strong>' + fmtMoney(totalCost) + '</strong></p>'
-        + (sheetsSkipped.length ? '<p style="font-size:12px;color:#9a3412;">Abas nao reconhecidas (ignoradas): ' + sheetsSkipped.join(', ') + '</p>' : '')
-        + '</div>';
-      document.getElementById('boqConfirmBtn').style.display = totalItems ? 'inline-block' : 'none';
+      renderSheetChecklist('boqSummary', boqSheetInfos);
+      const anyRecognized = boqSheetInfos.some(s => s.recognized);
+      document.getElementById('boqConfirmBtn').style.display = anyRecognized ? 'inline-block' : 'none';
       document.getElementById('boqError').style.display = 'none';
       document.getElementById('boqModal').style.display = 'flex';
     } catch (err) { alert('Erro ao ler planilha: ' + err.message); }
@@ -2381,21 +2468,24 @@ async function confirmBoqImport() {
   const error = document.getElementById('boqError');
   const confirmBtn = document.getElementById('boqConfirmBtn');
   if (!projectId) { error.textContent = 'Selecione um projeto'; error.style.display = 'block'; return; }
-  if (!boqParsedGroups.length) { error.textContent = 'Nenhum servico para importar'; error.style.display = 'block'; return; }
+  const selected = getCheckedSheetIndexes('boqSummary', boqSheetInfos).filter(s => s.recognized && s.groups);
+  if (!selected.length) { error.textContent = 'Marque pelo menos uma aba para importar'; error.style.display = 'block'; return; }
   error.style.display = 'none';
   confirmBtn.textContent = 'Importando, aguarde...';
   confirmBtn.disabled = true;
   try {
     let groupsCreated = 0, itemsCreated = 0;
     const childRows = [];
-    for (const group of boqParsedGroups) {
-      const groupCost = group.items.reduce((s, i) => s + i.cost, 0);
-      const groupDates = groupDateRange(group.items);
-      const res = await fetch(API + '/api/v1/tasks', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ title: group.title, description: 'Grupo importado da planilha de servicos (' + group.items.length + ' subitens)', type: 'atividade', status: 'pending', priority: 'medium', cost: groupCost, startDate: groupDates.startDate, deadline: groupDates.deadline, projectId }) });
-      const createdGroup = await res.json();
-      if (!res.ok) continue;
-      groupsCreated++;
-      group.items.forEach(item => childRows.push({ ...item, type: 'atividade', projectId, parentId: createdGroup.id }));
+    for (const sheetInfo of selected) {
+      for (const group of sheetInfo.groups) {
+        const groupCost = group.items.reduce((s, i) => s + i.cost, 0);
+        const groupDates = groupDateRange(group.items);
+        const res = await fetch(API + '/api/v1/tasks', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ title: group.title, description: 'Grupo importado da planilha de servicos (' + group.items.length + ' subitens)', type: 'atividade', status: 'pending', priority: 'medium', cost: groupCost, startDate: groupDates.startDate, deadline: groupDates.deadline, projectId }) });
+        const createdGroup = await res.json();
+        if (!res.ok) continue;
+        groupsCreated++;
+        group.items.forEach(item => childRows.push({ ...item, type: 'atividade', projectId, parentId: createdGroup.id }));
+      }
     }
     if (childRows.length) {
       const res2 = await fetch(API + '/api/v1/tasks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: childRows }) });
