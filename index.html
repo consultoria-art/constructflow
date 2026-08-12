@@ -347,8 +347,14 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
     </div>
     <div class="card" style="margin-top:16px;">
       <h3>Cronograma da Obra (Gantt por Atividade)</h3>
-      <select class="input" id="ganttActivityProjectSelect" style="width:260px;" onchange="renderActivityGantt()"></select>
-      <div class="gantt-legend">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <select class="input" id="ganttActivityProjectSelect" style="width:260px;margin-bottom:0;" onchange="renderActivityGantt()"></select>
+        <select class="input" id="ganttViewModeSelect" style="width:220px;margin-bottom:0;" onchange="renderActivityGantt()">
+          <option value="grupo">Ver por Grupo/Setor</option>
+          <option value="individual">Ver por Atividade Individual</option>
+        </select>
+      </div>
+      <div class="gantt-legend" style="margin-top:12px;">
         <span><span class="cal-legend-dot" style="background:#9ca3af;"></span>Planejado</span>
         <span><span class="cal-legend-dot" style="background:#22c55e;"></span>Realizado</span>
         <span><span class="cal-legend-dot" style="background:#ef4444;"></span>Atrasado</span>
@@ -374,6 +380,12 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
       <select id="bulkDeleteProjectSelect" class="input" style="max-width:260px;margin-bottom:0;"></select>
       <button class="btn btn-danger btn-sm" onclick="bulkDeleteTasks('atividade')">Excluir Atividades deste Projeto</button>
       <button class="btn btn-danger btn-sm" onclick="bulkDeleteTasks('tarefa')">Excluir Tarefas Internas deste Projeto</button>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+      <select id="kanbanViewModeSelect" class="input" style="max-width:220px;margin-bottom:0;" onchange="loadKanban()">
+        <option value="grupo">Ver por Grupo/Setor</option>
+        <option value="individual">Ver por Atividade Individual</option>
+      </select>
     </div>
     <input type="text" id="taskSearchInput" class="input" placeholder="Buscar tarefa por titulo (inclui subitens)..." oninput="loadKanban()" style="max-width:400px;">
     <div class="kanban-board">
@@ -1347,6 +1359,7 @@ async function loadProjetosView() {
 
 async function renderActivityGantt() {
   const projectId = document.getElementById('ganttActivityProjectSelect').value;
+  const viewMode = document.getElementById('ganttViewModeSelect').value;
   const container = document.getElementById('ganttActivityContainer');
   if (!projectId) { container.innerHTML = '<div class="loading">Selecione um projeto</div>'; return; }
 
@@ -1356,7 +1369,12 @@ async function renderActivityGantt() {
 
   const activitiesAll = allTasks.filter(t => t.projectId === projectId && t.type === 'atividade');
   const parentIds = new Set(activitiesAll.filter(t => t.parentId).map(t => t.parentId));
-  const activities = activitiesAll.filter(t => !parentIds.has(t.id));
+  let activities;
+  if (viewMode === 'grupo') {
+    activities = activitiesAll.filter(t => !t.parentId);
+  } else {
+    activities = activitiesAll.filter(t => !parentIds.has(t.id));
+  }
   if (!activities.length) { container.innerHTML = '<div class="loading">Nenhuma atividade de obra importada para este projeto ainda. Use "Complementar Projeto" ou "Importar Lista de Servicos" em Tarefas.</div>'; return; }
 
   const withDates = activities.filter(t => t.startDate && t.deadline);
@@ -1400,14 +1418,19 @@ async function renderActivityGantt() {
   const totalMs = maxDate - minDate;
   const todayPct = ((now - minDate) / totalMs) * 100;
 
-  // Agrupa por categoria (titulo da tarefa-pai, ex: "TERRAPLANAGEM")
+  // Agrupa por categoria (titulo da tarefa-pai, ex: "TERRAPLANAGEM") - so faz sentido no modo individual
   const groups = {};
   const order = [];
-  withDates.forEach(t => {
-    const cat = parentTitle(t) || 'Sem categoria';
-    if (!groups[cat]) { groups[cat] = []; order.push(cat); }
-    groups[cat].push(t);
-  });
+  if (viewMode === 'grupo') {
+    order.push('');
+    groups[''] = withDates.slice().sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+  } else {
+    withDates.forEach(t => {
+      const cat = parentTitle(t) || 'Sem categoria';
+      if (!groups[cat]) { groups[cat] = []; order.push(cat); }
+      groups[cat].push(t);
+    });
+  }
 
   html += '<div class="gantt-scale-labels"><span>' + minDate.toLocaleDateString('pt-BR') + '</span><span>' + maxDate.toLocaleDateString('pt-BR') + '</span></div>';
   html += '<div class="gantt-real">';
@@ -1805,7 +1828,8 @@ async function executeSheetImports(selected, projectId) {
       for (const group of sheetInfo.groups) {
         const groupCost = group.items.reduce((s, i) => s + i.cost, 0);
         const groupDates = groupDateRange(group.items);
-        const res = await fetch(API + '/api/v1/tasks', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ title: group.title, description: 'Grupo importado da planilha (' + group.items.length + ' subitens)', type: 'atividade', status: 'pending', priority: 'medium', cost: groupCost, startDate: groupDates.startDate, deadline: groupDates.deadline, projectId }) });
+        const groupProgress = groupAvgProgress(group.items);
+        const res = await fetch(API + '/api/v1/tasks', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ title: group.title, description: 'Grupo importado da planilha (' + group.items.length + ' subitens)', type: 'atividade', status: 'pending', priority: 'medium', cost: groupCost, startDate: groupDates.startDate, deadline: groupDates.deadline, progress: groupProgress, projectId }) });
         const createdGroup = await res.json();
         if (!res.ok) continue;
         groupsCreated++;
@@ -1881,10 +1905,14 @@ async function loadKanban() {
 
     const searchRaw = (document.getElementById('taskSearchInput') || {}).value || '';
     const search = normKey(searchRaw);
+    const viewMode = (document.getElementById('kanbanViewModeSelect') || {}).value || 'grupo';
 
     let tasksToShow;
     if (search) {
       tasksToShow = allTasks.filter(t => normKey(t.title).indexOf(search) > -1);
+    } else if (viewMode === 'individual') {
+      const childOf = new Set(allTasks.filter(t => t.parentId).map(t => t.parentId));
+      tasksToShow = allTasks.filter(t => !childOf.has(t.id));
     } else {
       const childCount = {};
       allTasks.forEach(t => { if (t.parentId) childCount[t.parentId] = (childCount[t.parentId] || 0) + 1; });
@@ -1917,12 +1945,15 @@ function renderKanbanColumn(status, containerId, countId, tasks) {
   document.getElementById(countId).textContent = '(' + filtered.length + ')';
   const c = document.getElementById(containerId);
   if (!filtered.length) { c.innerHTML = ''; return; }
+  const allT = window._cachedTasks || [];
   c.innerHTML = filtered.map(t => {
     const prioLabel = { low: 'Baixa', medium: 'Media', high: 'Alta' }[t.priority] || t.priority;
     const childBadge = t._childCount ? '<span class="deviation-badge" style="background:#dbeafe;color:#1e40af;">' + t._childCount + ' subitens</span>' : '';
     const tipoBadge = t.type === 'atividade' ? '<span class="deviation-badge" style="background:#ede9fe;color:#6b21a8;">🏗️ Setor de Obra</span>' : '';
+    const parentTask = t.parentId ? allT.find(x => x.id === t.parentId) : null;
+    const categoryLabel = parentTask ? '<span style="color:#6b21a8;">[' + esc(parentTask.title) + ']</span> ' : '';
     return '<div class="kanban-card" draggable="true" ondragstart="onKanbanDragStart(event, \'' + t.id + '\')" onclick="editTask(\'' + t.id + '\')">'
-      + '<div class="kc-title">' + (t.isMilestone ? '⭐ ' : '') + esc(t.title) + tipoBadge + childBadge + '</div>'
+      + '<div class="kc-title">' + categoryLabel + (t.isMilestone ? '⭐ ' : '') + esc(t.title) + tipoBadge + childBadge + '</div>'
       + '<div class="kc-meta">' + (t.project ? t.project.name : '') + ' &middot; ' + prioLabel + (t.assignee ? ' &middot; ' + esc(t.assignee.name) : '') + (t.deadline ? ' &middot; ' + fmtDate(t.deadline) : '') + (canSeeFinanceUI() && t.cost ? ' &middot; ' + fmtMoney(t.cost) : '') + '</div>'
       + '<div class="cost-track" style="margin-top:6px;height:6px;"><div class="cost-fill cost-fill-blue" style="width:' + (t.progress || 0) + '%"></div></div>'
       + '</div>';
@@ -2272,6 +2303,12 @@ function groupDateRange(items) {
   return { startDate: starts.length ? starts[0] : undefined, deadline: ends.length ? ends[ends.length - 1] : undefined };
 }
 
+function groupAvgProgress(items) {
+  const withProgress = items.filter(i => i.progress !== undefined && i.progress !== null);
+  if (!withProgress.length) return 0;
+  return Math.round(withProgress.reduce((s, i) => s + i.progress, 0) / withProgress.length);
+}
+
 function boqFindHeaderRow(aoa) {
   let bestRow = -1, bestScore = 0, bestCols = null;
   const limit = Math.min(aoa.length, 15);
@@ -2450,7 +2487,8 @@ async function confirmBoqImport() {
       for (const group of sheetInfo.groups) {
         const groupCost = group.items.reduce((s, i) => s + i.cost, 0);
         const groupDates = groupDateRange(group.items);
-        const res = await fetch(API + '/api/v1/tasks', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ title: group.title, description: 'Grupo importado da planilha de servicos (' + group.items.length + ' subitens)', type: 'atividade', status: 'pending', priority: 'medium', cost: groupCost, startDate: groupDates.startDate, deadline: groupDates.deadline, projectId }) });
+        const groupProgress = groupAvgProgress(group.items);
+        const res = await fetch(API + '/api/v1/tasks', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ title: group.title, description: 'Grupo importado da planilha de servicos (' + group.items.length + ' subitens)', type: 'atividade', status: 'pending', priority: 'medium', cost: groupCost, startDate: groupDates.startDate, deadline: groupDates.deadline, progress: groupProgress, projectId }) });
         const createdGroup = await res.json();
         if (!res.ok) continue;
         groupsCreated++;
