@@ -1445,19 +1445,40 @@ async function renderActivityGantt() {
       const leftPct = ((s - minDate) / totalMs) * 100;
       const plannedWidthPct = Math.max(1, ((originalEnd - s) / totalMs) * 100);
       const progress = t.progress || 0;
-      const isLate = (originalEnd < now && progress < 100 && !replanEnd) || (replanEnd && replanEnd < now && progress < 100);
-      const realizedColor = isLate ? '#ef4444' : '#22c55e';
+      const effectiveDeadline = replanEnd || originalEnd;
 
-      let realizedLeftPct, realizedWidthPct;
-      const hasActualDates = t.actualStartDate;
-      if (hasActualDates) {
-        const actualStart = new Date(t.actualStartDate);
-        const actualEnd = t.actualEndDate ? new Date(t.actualEndDate) : now;
-        realizedLeftPct = ((actualStart - minDate) / totalMs) * 100;
-        realizedWidthPct = Math.max(0.5, ((actualEnd - actualStart) / totalMs) * 100);
-      } else {
+      const actualStart = t.actualStartDate ? new Date(t.actualStartDate) : null;
+      const actualEnd = t.actualEndDate ? new Date(t.actualEndDate) : null;
+      const actualStartIsPast = actualStart && actualStart <= now;
+      const actualEndIsPast = actualEnd && actualEnd <= now;
+
+      let realizedColor, realizedLeftPct, realizedWidthPct, realizadoLabel;
+
+      if (actualEndIsPast) {
+        // Genuinamente concluido: a data real de fim ja passou
+        realizedColor = '#22c55e';
+        realizedLeftPct = ((actualStart || s) - minDate) / totalMs * 100;
+        realizedWidthPct = Math.max(0.5, ((actualEnd - (actualStart || s)) / totalMs) * 100);
+        realizadoLabel = 'concluido em ' + fmtDate(actualEnd);
+      } else if (actualStartIsPast) {
+        // Comecou de verdade, mas a data de fim informada ainda nao chegou (ou nao tem) - mostra em execucao ate hoje
+        const isOverdue = effectiveDeadline < now;
+        realizedColor = isOverdue ? '#ef4444' : '#3b82f6';
+        realizedLeftPct = (actualStart - minDate) / totalMs * 100;
+        realizedWidthPct = Math.max(0.5, ((now - actualStart) / totalMs) * 100);
+        realizadoLabel = isOverdue ? 'atrasado - iniciado em ' + fmtDate(actualStart) + ', ainda nao concluido' : 'em execucao desde ' + fmtDate(actualStart);
+      } else if (effectiveDeadline < now) {
+        // Prazo planejado ja venceu e nao ha registro de inicio/fim real - atrasado
+        realizedColor = '#ef4444';
         realizedLeftPct = leftPct;
-        realizedWidthPct = plannedWidthPct * (progress / 100);
+        realizedWidthPct = plannedWidthPct;
+        realizadoLabel = 'atrasado - prazo era ' + fmtDate(effectiveDeadline) + ', sem inicio registrado';
+      } else {
+        // Ainda dentro do prazo planejado, sem execucao real registrada ainda
+        realizedColor = null;
+        realizedLeftPct = leftPct;
+        realizedWidthPct = 0;
+        realizadoLabel = 'planejado - ainda nao iniciado (prazo ' + fmtDate(effectiveDeadline) + ')';
       }
 
       let replanBarHtml = '';
@@ -1467,17 +1488,13 @@ async function renderActivityGantt() {
         replanBarHtml = '<div class="gantt-realized" style="left:' + replanLeftPct + '%;width:' + replanWidthPct + '%;background:#a855f7;top:0;"></div>';
       }
 
-      const isFutureActual = t.actualEndDate && new Date(t.actualEndDate) > now;
-      const realizadoLabel = hasActualDates
-        ? (t.actualEndDate
-            ? (isFutureActual ? 'previsto concluir em ' + fmtDate(t.actualEndDate) + ' (' + progress + '%)' : 'concluido em ' + fmtDate(t.actualEndDate))
-            : 'em execucao desde ' + fmtDate(t.actualStartDate))
-        : progress + '%';
+      const realizedBarHtml = realizedColor ? '<div class="gantt-realized" style="left:' + realizedLeftPct + '%;width:' + realizedWidthPct + '%;background:' + realizedColor + ';"></div>' : '';
+
       html += '<div class="gantt-row" style="cursor:pointer;" onclick="editTask(\'' + t.id + '\')">'
         + '<div class="gantt-row-label">' + (t.isMilestone ? '⭐ ' : '') + esc(t.title) + ' &middot; ' + realizadoLabel + (replanEnd ? ' &middot; replanejado p/ ' + fmtDate(replanEnd) : '') + '</div>'
         + '<div class="gantt-track-real">'
         + '<div class="gantt-planned" style="left:' + leftPct + '%;width:' + plannedWidthPct + '%;"></div>'
-        + '<div class="gantt-realized" style="left:' + realizedLeftPct + '%;width:' + realizedWidthPct + '%;background:' + realizedColor + ';"></div>'
+        + realizedBarHtml
         + replanBarHtml
         + '</div></div>';
     });
