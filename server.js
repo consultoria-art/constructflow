@@ -594,6 +594,48 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { success: true });
     }
 
+    if (req.url === '/api/v1/task-columns' && req.method === 'GET') {
+      let columns = await prisma.taskColumn.findMany({ where: { organizationId: user.organizationId }, orderBy: { order: 'asc' } });
+      if (!columns.length) {
+        await prisma.taskColumn.createMany({
+          data: [
+            { id: 'pending', name: 'Pendente', color: '#6b7280', order: 0, organizationId: user.organizationId },
+            { id: 'in_progress', name: 'Em Andamento', color: '#3b82f6', order: 1, organizationId: user.organizationId },
+            { id: 'done', name: 'Concluida', color: '#22c55e', order: 2, organizationId: user.organizationId }
+          ]
+        });
+        columns = await prisma.taskColumn.findMany({ where: { organizationId: user.organizationId }, orderBy: { order: 'asc' } });
+      }
+      return sendJSON(res, 200, columns);
+    }
+
+    if (req.url === '/api/v1/task-columns' && req.method === 'POST') {
+      const { name, color } = await parseBody(req);
+      if (!name) return sendJSON(res, 400, { error: 'Nome da coluna e obrigatorio' });
+      const maxOrder = await prisma.taskColumn.aggregate({ where: { organizationId: user.organizationId }, _max: { order: true } });
+      const col = await prisma.taskColumn.create({ data: { name, color: color || '#6b7280', order: (maxOrder._max.order ?? -1) + 1, organizationId: user.organizationId } });
+      return sendJSON(res, 201, col);
+    }
+
+    if (req.url.startsWith('/api/v1/task-columns/') && req.method === 'PUT') {
+      const id = req.url.split('/')[4];
+      const { name, color, order } = await parseBody(req);
+      const data = {};
+      if (name !== undefined) data.name = name;
+      if (color !== undefined) data.color = color;
+      if (order !== undefined) data.order = order;
+      const col = await prisma.taskColumn.update({ where: { id }, data });
+      return sendJSON(res, 200, col);
+    }
+
+    if (req.url.startsWith('/api/v1/task-columns/') && req.method === 'DELETE') {
+      const id = req.url.split('/')[4];
+      const taskCount = await prisma.task.count({ where: { status: id, project: { organizationId: user.organizationId } } });
+      if (taskCount > 0) return sendJSON(res, 400, { error: 'Esta coluna tem ' + taskCount + ' tarefa(s). Mova ou exclua as tarefas antes de remover a coluna.' });
+      await prisma.taskColumn.delete({ where: { id } });
+      return sendJSON(res, 200, { success: true });
+    }
+
     if (req.url === '/api/v1/tasks' && req.method === 'GET') {
       return sendJSON(res, 200, await prisma.task.findMany({ where: { project: { organizationId: user.organizationId } }, include: { project: true, assignee: true }, orderBy: { createdAt: 'desc' } }));
     }
