@@ -84,20 +84,21 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 .gantt-realized { position: absolute; top: 0; height: 20px; border-radius: 4px; opacity: 0.9; }
 .gantt-legend { display: flex; gap: 16px; margin-bottom: 12px; font-size: 12px; color: #374151; }
 .gantt-v2-scroll { overflow-x: auto; border: 1px solid #f3f4f6; border-radius: 8px; }
-.gantt-v2-inner { min-width: 1800px; position: relative; }
+.gantt-v2-inner { position: relative; }
 .gantt-v2-header { display: flex; position: sticky; top: 0; background: #fff; z-index: 6; border-bottom: 1px solid #e5e7eb; }
 .gantt-v2-header-label { width: 280px; flex-shrink: 0; padding: 6px 10px; font-size: 11px; font-weight: 700; color: #6b7280; }
-.gantt-v2-header-bars { flex: 1; position: relative; padding: 6px 10px; font-size: 11px; color: #6b7280; display: flex; justify-content: space-between; }
+.gantt-v2-header-bars { position: relative; padding: 6px 0; font-size: 11px; color: #6b7280; height: 24px; }
+.gantt-v2-header-bars span { position: absolute; top: 6px; border-left: 1px solid #e5e7eb; padding-left: 4px; }
 .gantt-v2-cat { padding: 10px 10px 4px; font-size: 12px; font-weight: 700; color: #374151; text-transform: uppercase; }
-.gantt-v2-row { display: flex; align-items: stretch; border-bottom: 1px solid #f8fafc; min-height: 46px; cursor: pointer; }
+.gantt-v2-row { display: flex; align-items: stretch; border-bottom: 1px solid #f8fafc; min-height: 50px; cursor: pointer; }
 .gantt-v2-row:hover { background: #fafafa; }
-.gantt-v2-label { width: 280px; flex-shrink: 0; padding: 6px 10px; display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 12px; color: #1f2937; }
+.gantt-v2-label { width: 280px; flex-shrink: 0; padding: 6px 10px; display: flex; flex-direction: column; justify-content: center; gap: 2px; font-size: 12px; color: #1f2937; }
 .gantt-v2-label-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gantt-v2-progress-input { width: 46px; flex-shrink: 0; font-size: 11px; padding: 2px 4px; border: 1px solid #d1d5db; border-radius: 4px; text-align: center; }
-.gantt-v2-bars { flex: 1; position: relative; padding: 6px 10px; }
-.gantt-v2-bar-track { position: relative; height: 10px; margin-bottom: 4px; }
-.gantt-v2-bar-planned { position: absolute; top: 0; height: 10px; background: #d1d5db; border-radius: 3px; }
-.gantt-v2-bar-realized { position: absolute; top: 0; height: 10px; border-radius: 3px; }
+.gantt-v2-progress-input { width: 46px; flex-shrink: 0; font-size: 11px; padding: 2px 4px; border: 1px solid #d1d5db; border-radius: 4px; text-align: center; margin: auto 8px; }
+.gantt-v2-bars { position: relative; padding: 8px 0; }
+.gantt-v2-bar-track { position: relative; height: 14px; margin-bottom: 4px; }
+.gantt-v2-bar-planned { position: absolute; top: 0; height: 14px; background: #d1d5db; border-radius: 3px; }
+.gantt-v2-bar-realized { position: absolute; top: 0; height: 14px; border-radius: 3px; }
 .gantt-v2-today-line { position: absolute; top: 0; bottom: 0; width: 2px; background: #4f46e5; z-index: 5; }
 .gantt-v2-today-label { position: absolute; top: -16px; font-size: 10px; color: #4f46e5; font-weight: 600; transform: translateX(-50%); white-space: nowrap; }
 .cost-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
@@ -1471,14 +1472,18 @@ async function renderActivityGantt() {
   }
 
   const now = new Date();
+  const DAY_MS = 24 * 3600 * 1000;
+  const PX_PER_DAY = 26;
   const starts = withDates.map(t => new Date(t.startDate));
   const ends = withDates.map(t => new Date(t.replannedDeadline || t.deadline));
   let minDate = new Date(Math.min.apply(null, starts.concat([now])));
   let maxDate = new Date(Math.max.apply(null, ends.concat([now])));
-  minDate = new Date(minDate.getTime() - 3 * 24 * 3600 * 1000);
-  maxDate = new Date(maxDate.getTime() + 3 * 24 * 3600 * 1000);
-  const totalMs = maxDate - minDate;
-  const todayPct = ((now - minDate) / totalMs) * 100;
+  minDate = new Date(minDate.getTime() - 3 * DAY_MS);
+  maxDate = new Date(maxDate.getTime() + 5 * DAY_MS);
+  const totalDays = Math.max(1, Math.ceil((maxDate - minDate) / DAY_MS));
+  const barsWidthPx = totalDays * PX_PER_DAY;
+  const daysFromMin = (d) => (d - minDate) / DAY_MS;
+  const todayLeftPx = daysFromMin(now) * PX_PER_DAY;
 
   // Item 1: ordena cronologicamente - primeira a ser executada no topo, ultima embaixo
   const sortedByStart = withDates.slice().sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
@@ -1495,13 +1500,23 @@ async function renderActivityGantt() {
       if (!groups[cat]) { groups[cat] = []; order.push(cat); }
       groups[cat].push(t);
     });
-    // Reordena as categorias pela data de inicio da primeira atividade de cada uma
     order.sort((a, b) => new Date(groups[a][0].startDate) - new Date(groups[b][0].startDate));
   }
 
-  // Item 4: area do cronograma em layout largo (estilo paisagem), com rolagem horizontal
-  html += '<div class="gantt-v2-scroll"><div class="gantt-v2-inner">';
-  html += '<div class="gantt-v2-header"><div class="gantt-v2-header-label">Atividade</div><div class="gantt-v2-header-bars"><span>' + minDate.toLocaleDateString('pt-BR') + '</span><span>' + maxDate.toLocaleDateString('pt-BR') + '</span></div></div>';
+  // Marcacoes de mes no fundo, para referencia visual (estilo grade do Sienge/Project)
+  const monthMarks = [];
+  let cursor = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+  if (cursor < minDate) cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+  while (cursor <= maxDate) {
+    monthMarks.push({ leftPx: daysFromMin(cursor) * PX_PER_DAY, label: cursor.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }) });
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+  }
+
+  // Item 4: area do cronograma em layout largo (estilo paisagem), com rolagem horizontal, escala fixa de pixels/dia
+  html += '<div class="gantt-v2-scroll"><div class="gantt-v2-inner" style="width:' + (280 + barsWidthPx) + 'px;">';
+  html += '<div class="gantt-v2-header"><div class="gantt-v2-header-label">Atividade</div><div class="gantt-v2-header-bars" style="width:' + barsWidthPx + 'px;flex:none;position:relative;">'
+    + monthMarks.map(m => '<span style="position:absolute;left:' + m.leftPx + 'px;">' + m.label + '</span>').join('')
+    + '</div></div>';
 
   order.forEach(cat => {
     if (cat) html += '<div class="gantt-v2-cat">' + esc(cat) + '</div>';
@@ -1509,8 +1524,8 @@ async function renderActivityGantt() {
       const s = new Date(t.startDate);
       const originalEnd = new Date(t.deadline);
       const replanEnd = t.replannedDeadline ? new Date(t.replannedDeadline) : null;
-      const leftPct = ((s - minDate) / totalMs) * 100;
-      const plannedWidthPct = Math.max(1.2, ((originalEnd - s) / totalMs) * 100);
+      const leftPx = daysFromMin(s) * PX_PER_DAY;
+      const plannedWidthPx = Math.max(PX_PER_DAY * 0.6, daysFromMin(originalEnd) * PX_PER_DAY - leftPx);
       const progress = t.progress || 0;
       const effectiveDeadline = replanEnd || originalEnd;
 
@@ -1519,52 +1534,57 @@ async function renderActivityGantt() {
       const actualStartIsPast = actualStart && actualStart <= now;
       const actualEndIsPast = actualEnd && actualEnd <= now;
 
-      let realizedColor, realizedLeftPct, realizedWidthPct, realizadoLabel, diasAtraso = 0;
+      let realizedColor, realizedLeftPx, realizedWidthPx, realizadoLabel, diasAtraso = 0;
 
       if (actualEndIsPast) {
         realizedColor = '#22c55e';
-        realizedLeftPct = ((actualStart || s) - minDate) / totalMs * 100;
-        realizedWidthPct = Math.max(1, ((actualEnd - (actualStart || s)) / totalMs) * 100);
+        realizedLeftPx = daysFromMin(actualStart || s) * PX_PER_DAY;
+        realizedWidthPx = Math.max(PX_PER_DAY * 0.6, daysFromMin(actualEnd) * PX_PER_DAY - realizedLeftPx);
         realizadoLabel = 'Concluido em ' + fmtDate(actualEnd);
       } else if (actualStartIsPast) {
         const isOverdue = effectiveDeadline < now;
         realizedColor = isOverdue ? '#ef4444' : '#3b82f6';
-        realizedLeftPct = (actualStart - minDate) / totalMs * 100;
-        realizedWidthPct = Math.max(1, ((now - actualStart) / totalMs) * 100);
-        diasAtraso = isOverdue ? Math.round((now - effectiveDeadline) / (24 * 3600 * 1000)) : 0;
+        realizedLeftPx = daysFromMin(actualStart) * PX_PER_DAY;
+        realizedWidthPx = Math.max(PX_PER_DAY * 0.6, daysFromMin(now) * PX_PER_DAY - realizedLeftPx);
+        diasAtraso = isOverdue ? Math.round((now - effectiveDeadline) / DAY_MS) : 0;
         realizadoLabel = isOverdue ? 'Atrasado ' + diasAtraso + ' dia(s) - iniciado em ' + fmtDate(actualStart) : 'Em execucao desde ' + fmtDate(actualStart);
       } else if (effectiveDeadline < now) {
         realizedColor = '#ef4444';
-        realizedLeftPct = leftPct;
-        realizedWidthPct = plannedWidthPct;
-        diasAtraso = Math.round((now - effectiveDeadline) / (24 * 3600 * 1000));
+        realizedLeftPx = leftPx;
+        realizedWidthPx = plannedWidthPx;
+        diasAtraso = Math.round((now - effectiveDeadline) / DAY_MS);
         realizadoLabel = 'Atrasado ' + diasAtraso + ' dia(s) - prazo era ' + fmtDate(effectiveDeadline);
       } else {
         realizedColor = null;
-        realizedLeftPct = leftPct;
-        realizedWidthPct = 0;
+        realizedLeftPx = leftPx;
+        realizedWidthPx = 0;
         realizadoLabel = 'Planejado - prazo ' + fmtDate(effectiveDeadline);
       }
 
       // Item 5: replanejamento tem 3a cor e aparece na barra de executado (nao numa linha separada)
       let replanBarHtml = '';
       if (replanEnd) {
-        const replanLeftPct = ((originalEnd - minDate) / totalMs) * 100;
-        const replanWidthPct = Math.max(1, ((replanEnd - originalEnd) / totalMs) * 100);
-        replanBarHtml = '<div class="gantt-v2-bar-realized" style="left:' + replanLeftPct + '%;width:' + replanWidthPct + '%;background:#a855f7;"></div>';
+        const replanLeftPx = daysFromMin(originalEnd) * PX_PER_DAY;
+        const replanWidthPx = Math.max(PX_PER_DAY * 0.6, daysFromMin(replanEnd) * PX_PER_DAY - replanLeftPx);
+        replanBarHtml = '<div class="gantt-v2-bar-realized" style="left:' + replanLeftPx + 'px;width:' + replanWidthPx + 'px;background:#a855f7;"></div>';
       }
 
-      const realizedBarHtml = realizedColor ? '<div class="gantt-v2-bar-realized" style="left:' + realizedLeftPct + '%;width:' + realizedWidthPct + '%;background:' + realizedColor + ';"></div>' : '';
+      const realizedBarHtml = realizedColor ? '<div class="gantt-v2-bar-realized" style="left:' + realizedLeftPx + 'px;width:' + realizedWidthPx + 'px;background:' + realizedColor + ';"></div>' : '';
       const atrasoWarning = diasAtraso > 5 ? ' ⚠️' : '';
+      const dateRangeLabel = fmtDate(t.startDate) + ' a ' + fmtDate(t.deadline);
+
+      const monthGridHtml = monthMarks.map(m => '<div style="position:absolute;left:' + m.leftPx + 'px;top:0;bottom:0;width:1px;background:#f1f5f9;"></div>').join('');
 
       // Item 3: percentual editavel diretamente na tela, atualiza sem abrir modal
       html += '<div class="gantt-v2-row" title="' + esc(realizadoLabel) + (replanEnd ? ' - replanejado p/ ' + fmtDate(replanEnd) : '') + '">'
         + '<div class="gantt-v2-label" onclick="editTask(\'' + t.id + '\')" style="cursor:pointer;">'
         + '<span class="gantt-v2-label-text">' + (t.isMilestone ? '⭐ ' : '') + esc(t.title) + atrasoWarning + '</span>'
+        + '<span style="font-size:10px;color:#9ca3af;white-space:nowrap;">' + dateRangeLabel + '</span>'
         + '</div>'
-        + '<div class="gantt-v2-bars">'
-        + '<div class="gantt-v2-today-line" style="left:' + todayPct + '%;"></div>'
-        + '<div class="gantt-v2-bar-track"><div class="gantt-v2-bar-planned" style="left:' + leftPct + '%;width:' + plannedWidthPct + '%;"></div></div>'
+        + '<div class="gantt-v2-bars" style="width:' + barsWidthPx + 'px;flex:none;">'
+        + monthGridHtml
+        + '<div class="gantt-v2-today-line" style="left:' + todayLeftPx + 'px;"></div>'
+        + '<div class="gantt-v2-bar-track"><div class="gantt-v2-bar-planned" style="left:' + leftPx + 'px;width:' + plannedWidthPx + 'px;"></div></div>'
         + '<div class="gantt-v2-bar-track">' + realizedBarHtml + replanBarHtml + '</div>'
         + '</div>'
         + '<input type="number" class="gantt-v2-progress-input" min="0" max="100" value="' + progress + '" onclick="event.stopPropagation()" onchange="quickUpdateActivityProgress(\'' + t.id + '\', this.value)" title="Percentual executado - edite direto aqui">'
