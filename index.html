@@ -83,6 +83,23 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 .gantt-planned { position: absolute; top: 0; height: 20px; background: #e5e7eb; border-radius: 4px; border: 1px solid #d1d5db; }
 .gantt-realized { position: absolute; top: 0; height: 20px; border-radius: 4px; opacity: 0.9; }
 .gantt-legend { display: flex; gap: 16px; margin-bottom: 12px; font-size: 12px; color: #374151; }
+.gantt-v2-scroll { overflow-x: auto; border: 1px solid #f3f4f6; border-radius: 8px; }
+.gantt-v2-inner { min-width: 1100px; position: relative; }
+.gantt-v2-header { display: flex; position: sticky; top: 0; background: #fff; z-index: 6; border-bottom: 1px solid #e5e7eb; }
+.gantt-v2-header-label { width: 280px; flex-shrink: 0; padding: 6px 10px; font-size: 11px; font-weight: 700; color: #6b7280; }
+.gantt-v2-header-bars { flex: 1; position: relative; padding: 6px 10px; font-size: 11px; color: #6b7280; display: flex; justify-content: space-between; }
+.gantt-v2-cat { padding: 10px 10px 4px; font-size: 12px; font-weight: 700; color: #374151; text-transform: uppercase; }
+.gantt-v2-row { display: flex; align-items: stretch; border-bottom: 1px solid #f8fafc; min-height: 46px; cursor: pointer; }
+.gantt-v2-row:hover { background: #fafafa; }
+.gantt-v2-label { width: 280px; flex-shrink: 0; padding: 6px 10px; display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 12px; color: #1f2937; }
+.gantt-v2-label-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gantt-v2-progress-input { width: 46px; flex-shrink: 0; font-size: 11px; padding: 2px 4px; border: 1px solid #d1d5db; border-radius: 4px; text-align: center; }
+.gantt-v2-bars { flex: 1; position: relative; padding: 6px 10px; }
+.gantt-v2-bar-track { position: relative; height: 10px; margin-bottom: 4px; }
+.gantt-v2-bar-planned { position: absolute; top: 0; height: 10px; background: #d1d5db; border-radius: 3px; }
+.gantt-v2-bar-realized { position: absolute; top: 0; height: 10px; border-radius: 3px; }
+.gantt-v2-today-line { position: absolute; top: 0; bottom: 0; width: 2px; background: #4f46e5; z-index: 5; }
+.gantt-v2-today-label { position: absolute; top: -16px; font-size: 10px; color: #4f46e5; font-weight: 600; transform: translateX(-50%); white-space: nowrap; }
 .cost-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .cost-bar .cost-label { width: 80px; font-size: 12px; color: #374151; }
 .cost-bar .cost-track { flex: 1; height: 12px; background: #f3f4f6; border-radius: 6px; overflow: hidden; }
@@ -1435,26 +1452,31 @@ async function renderActivityGantt() {
   const totalMs = maxDate - minDate;
   const todayPct = ((now - minDate) / totalMs) * 100;
 
-  // Agrupa por categoria (titulo da tarefa-pai, ex: "TERRAPLANAGEM") - so faz sentido no modo individual
+  // Item 1: ordena cronologicamente - primeira a ser executada no topo, ultima embaixo
+  const sortedByStart = withDates.slice().sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+
+  // Agrupa por categoria (titulo da tarefa-pai) - so faz sentido no modo individual
   const groups = {};
   const order = [];
   if (viewMode === 'grupo') {
     order.push('');
-    groups[''] = withDates.slice().sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+    groups[''] = sortedByStart;
   } else {
-    withDates.forEach(t => {
+    sortedByStart.forEach(t => {
       const cat = parentTitle(t) || 'Sem categoria';
       if (!groups[cat]) { groups[cat] = []; order.push(cat); }
       groups[cat].push(t);
     });
+    // Reordena as categorias pela data de inicio da primeira atividade de cada uma
+    order.sort((a, b) => new Date(groups[a][0].startDate) - new Date(groups[b][0].startDate));
   }
 
-  html += '<div class="gantt-scale-labels"><span>' + minDate.toLocaleDateString('pt-BR') + '</span><span>' + maxDate.toLocaleDateString('pt-BR') + '</span></div>';
-  html += '<div class="gantt-real">';
-  html += '<div class="gantt-today-line" style="left:' + todayPct + '%"><span class="gantt-today-label">Hoje</span></div>';
+  // Item 4: area do cronograma em layout largo (estilo paisagem), com rolagem horizontal
+  html += '<div class="gantt-v2-scroll"><div class="gantt-v2-inner">';
+  html += '<div class="gantt-v2-header"><div class="gantt-v2-header-label">Atividade</div><div class="gantt-v2-header-bars"><span>' + minDate.toLocaleDateString('pt-BR') + '</span><span>' + maxDate.toLocaleDateString('pt-BR') + '</span></div></div>';
 
   order.forEach(cat => {
-    html += '<div style="font-size:12px;font-weight:700;color:#374151;margin:14px 0 6px;text-transform:uppercase;">' + esc(cat) + '</div>';
+    if (cat) html += '<div class="gantt-v2-cat">' + esc(cat) + '</div>';
     groups[cat].forEach(t => {
       const s = new Date(t.startDate);
       const originalEnd = new Date(t.deadline);
@@ -1469,56 +1491,69 @@ async function renderActivityGantt() {
       const actualStartIsPast = actualStart && actualStart <= now;
       const actualEndIsPast = actualEnd && actualEnd <= now;
 
-      let realizedColor, realizedLeftPct, realizedWidthPct, realizadoLabel;
+      let realizedColor, realizedLeftPct, realizedWidthPct, realizadoLabel, diasAtraso = 0;
 
       if (actualEndIsPast) {
-        // Genuinamente concluido: a data real de fim ja passou
         realizedColor = '#22c55e';
         realizedLeftPct = ((actualStart || s) - minDate) / totalMs * 100;
         realizedWidthPct = Math.max(0.5, ((actualEnd - (actualStart || s)) / totalMs) * 100);
-        realizadoLabel = 'concluido em ' + fmtDate(actualEnd);
+        realizadoLabel = 'Concluido em ' + fmtDate(actualEnd);
       } else if (actualStartIsPast) {
-        // Comecou de verdade, mas a data de fim informada ainda nao chegou (ou nao tem) - mostra em execucao ate hoje
         const isOverdue = effectiveDeadline < now;
         realizedColor = isOverdue ? '#ef4444' : '#3b82f6';
         realizedLeftPct = (actualStart - minDate) / totalMs * 100;
         realizedWidthPct = Math.max(0.5, ((now - actualStart) / totalMs) * 100);
-        realizadoLabel = isOverdue ? 'atrasado - iniciado em ' + fmtDate(actualStart) + ', ainda nao concluido' : 'em execucao desde ' + fmtDate(actualStart);
+        diasAtraso = isOverdue ? Math.round((now - effectiveDeadline) / (24 * 3600 * 1000)) : 0;
+        realizadoLabel = isOverdue ? 'Atrasado ' + diasAtraso + ' dia(s) - iniciado em ' + fmtDate(actualStart) : 'Em execucao desde ' + fmtDate(actualStart);
       } else if (effectiveDeadline < now) {
-        // Prazo planejado ja venceu e nao ha registro de inicio/fim real - atrasado
         realizedColor = '#ef4444';
         realizedLeftPct = leftPct;
         realizedWidthPct = plannedWidthPct;
-        realizadoLabel = 'atrasado - prazo era ' + fmtDate(effectiveDeadline) + ', sem inicio registrado';
+        diasAtraso = Math.round((now - effectiveDeadline) / (24 * 3600 * 1000));
+        realizadoLabel = 'Atrasado ' + diasAtraso + ' dia(s) - prazo era ' + fmtDate(effectiveDeadline);
       } else {
-        // Ainda dentro do prazo planejado, sem execucao real registrada ainda
         realizedColor = null;
         realizedLeftPct = leftPct;
         realizedWidthPct = 0;
-        realizadoLabel = 'planejado - ainda nao iniciado (prazo ' + fmtDate(effectiveDeadline) + ')';
+        realizadoLabel = 'Planejado - prazo ' + fmtDate(effectiveDeadline);
       }
 
+      // Item 5: replanejamento tem 3a cor e aparece na barra de executado (nao numa linha separada)
       let replanBarHtml = '';
       if (replanEnd) {
         const replanLeftPct = ((originalEnd - minDate) / totalMs) * 100;
         const replanWidthPct = Math.max(1, ((replanEnd - originalEnd) / totalMs) * 100);
-        replanBarHtml = '<div class="gantt-realized" style="left:' + replanLeftPct + '%;width:' + replanWidthPct + '%;background:#a855f7;top:0;"></div>';
+        replanBarHtml = '<div class="gantt-v2-bar-realized" style="left:' + replanLeftPct + '%;width:' + replanWidthPct + '%;background:#a855f7;"></div>';
       }
 
-      const realizedBarHtml = realizedColor ? '<div class="gantt-realized" style="left:' + realizedLeftPct + '%;width:' + realizedWidthPct + '%;background:' + realizedColor + ';"></div>' : '';
+      const realizedBarHtml = realizedColor ? '<div class="gantt-v2-bar-realized" style="left:' + realizedLeftPct + '%;width:' + realizedWidthPct + '%;background:' + realizedColor + ';"></div>' : '';
+      const atrasoWarning = diasAtraso > 5 ? ' ⚠️' : '';
 
-      html += '<div class="gantt-row" style="cursor:pointer;" onclick="editTask(\'' + t.id + '\')">'
-        + '<div class="gantt-row-label">' + (t.isMilestone ? '⭐ ' : '') + esc(t.title) + ' &middot; ' + realizadoLabel + (replanEnd ? ' &middot; replanejado p/ ' + fmtDate(replanEnd) : '') + '</div>'
-        + '<div class="gantt-track-real">'
-        + '<div class="gantt-planned" style="left:' + leftPct + '%;width:' + plannedWidthPct + '%;"></div>'
-        + realizedBarHtml
-        + replanBarHtml
-        + '</div></div>';
+      // Item 3: percentual editavel diretamente na tela, atualiza sem abrir modal
+      html += '<div class="gantt-v2-row" title="' + esc(realizadoLabel) + (replanEnd ? ' - replanejado p/ ' + fmtDate(replanEnd) : '') + '">'
+        + '<div class="gantt-v2-label" onclick="editTask(\'' + t.id + '\')" style="cursor:pointer;">'
+        + '<span class="gantt-v2-label-text">' + (t.isMilestone ? '⭐ ' : '') + esc(t.title) + atrasoWarning + '</span>'
+        + '</div>'
+        + '<div class="gantt-v2-bars">'
+        + '<div class="gantt-v2-today-line" style="left:' + todayPct + '%;"></div>'
+        + '<div class="gantt-v2-bar-track"><div class="gantt-v2-bar-planned" style="left:' + leftPct + '%;width:' + plannedWidthPct + '%;"></div></div>'
+        + '<div class="gantt-v2-bar-track">' + realizedBarHtml + replanBarHtml + '</div>'
+        + '</div>'
+        + '<input type="number" class="gantt-v2-progress-input" min="0" max="100" value="' + progress + '" onclick="event.stopPropagation()" onchange="quickUpdateActivityProgress(\'' + t.id + '\', this.value)" title="Percentual executado - edite direto aqui">'
+        + '</div>';
     });
   });
 
-  html += '</div>';
+  html += '</div></div>';
   container.innerHTML = html;
+}
+
+async function quickUpdateActivityProgress(taskId, value) {
+  const progress = Math.max(0, Math.min(100, parseInt(value) || 0));
+  try {
+    await fetch(API + '/api/v1/tasks/' + taskId, { method: 'PUT', headers: apiHeaders(), body: JSON.stringify({ progress }) });
+    renderActivityGantt();
+  } catch (e) { alert('Erro ao atualizar percentual'); }
 }
 
 function renderCurvaS() {
