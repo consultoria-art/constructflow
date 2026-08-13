@@ -255,15 +255,23 @@ async function calcRevenueForecast(organizationId) {
   const tasks = await prisma.task.findMany({ where: { project: { organizationId }, cost: { gt: 0 } } });
   const expenses = await prisma.expense.findMany({ where: { project: { organizationId } } });
 
+  const now = new Date();
   const revenueByMonth = {};
   tasks.forEach(t => {
     const targetDate = t.replannedDeadline || t.deadline;
     if (!targetDate) return;
-    const key = monthKey(targetDate);
-    if (!revenueByMonth[key]) revenueByMonth[key] = { realizada: 0, prevista: 0 };
-    const pct = Math.min(100, Math.max(0, t.progress || 0)) / 100;
-    revenueByMonth[key].realizada += t.cost * pct;
-    revenueByMonth[key].prevista += t.cost * (1 - pct);
+    const actualEndInPast = t.actualEndDate && new Date(t.actualEndDate) <= now;
+    if (actualEndInPast) {
+      // Genuinamente concluido: receita realizada no mes da conclusao real
+      const key = monthKey(t.actualEndDate);
+      if (!revenueByMonth[key]) revenueByMonth[key] = { realizada: 0, prevista: 0 };
+      revenueByMonth[key].realizada += t.cost;
+    } else {
+      // Ainda nao concluido de verdade (independente do % informado) - conta como previsto no mes planejado
+      const key = monthKey(targetDate);
+      if (!revenueByMonth[key]) revenueByMonth[key] = { realizada: 0, prevista: 0 };
+      revenueByMonth[key].prevista += t.cost;
+    }
   });
 
   const expensesByMonth = {};
