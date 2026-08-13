@@ -84,7 +84,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 .gantt-realized { position: absolute; top: 0; height: 20px; border-radius: 4px; opacity: 0.9; }
 .gantt-legend { display: flex; gap: 16px; margin-bottom: 12px; font-size: 12px; color: #374151; }
 .gantt-v2-scroll { overflow-x: auto; border: 1px solid #f3f4f6; border-radius: 8px; }
-.gantt-v2-inner { min-width: 1100px; position: relative; }
+.gantt-v2-inner { min-width: 1800px; position: relative; }
 .gantt-v2-header { display: flex; position: sticky; top: 0; background: #fff; z-index: 6; border-bottom: 1px solid #e5e7eb; }
 .gantt-v2-header-label { width: 280px; flex-shrink: 0; padding: 6px 10px; font-size: 11px; font-weight: 700; color: #6b7280; }
 .gantt-v2-header-bars { flex: 1; position: relative; padding: 6px 10px; font-size: 11px; color: #6b7280; display: flex; justify-content: space-between; }
@@ -819,14 +819,17 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <div class="modal-box">
 <h2 style="margin-bottom:20px;">Fale Conosco</h2>
 <div class="error" id="contactError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+<div id="contactFormFields">
 <label class="field">Assunto</label>
 <input id="contactSubject" type="text" class="input" placeholder="Ex: Erro ao importar planilha">
 <label class="field">Mensagem</label>
 <textarea id="contactMessage" class="input" rows="5" style="resize:vertical;" placeholder="Descreva o problema ou a duvida com o maximo de detalhes possivel"></textarea>
-<p style="font-size:12px;color:#6b7280;margin-bottom:16px;">Isso abre seu aplicativo de e-mail com a mensagem pronta para enviar ao nosso suporte.</p>
-<div style="display:flex;gap:12px;justify-content:flex-end;">
-<button class="btn btn-secondary" onclick="closeModal('contactModal')">Cancelar</button>
-<button class="btn btn-primary" onclick="sendContactMessage()">Abrir E-mail</button>
+<p style="font-size:12px;color:#6b7280;margin-bottom:16px;">Escolha como enviar na proxima tela (Gmail, seu app de e-mail, ou copiar e colar).</p>
+</div>
+<div id="contactSuccessBox" class="hidden"></div>
+<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:16px;">
+<button class="btn btn-secondary" onclick="closeModal('contactModal')">Fechar</button>
+<button class="btn btn-primary" id="contactSendBtn" onclick="sendContactMessage()">Continuar</button>
 </div>
 </div>
 </div>
@@ -973,6 +976,11 @@ function openContactModal() {
   document.getElementById('contactSubject').value = '';
   document.getElementById('contactMessage').value = '';
   document.getElementById('contactError').style.display = 'none';
+  document.getElementById('contactFormFields').classList.remove('hidden');
+  document.getElementById('contactSuccessBox').classList.add('hidden');
+  document.getElementById('contactSuccessBox').innerHTML = '';
+  document.getElementById('contactSendBtn').style.display = 'inline-block';
+  document.getElementById('contactSendBtn').textContent = 'Continuar';
   document.getElementById('contactModal').style.display = 'flex';
 }
 
@@ -982,11 +990,31 @@ function sendContactMessage() {
   const error = document.getElementById('contactError');
   if (!subject || !message) { error.textContent = 'Preencha o assunto e a mensagem'; error.style.display = 'block'; return; }
   error.style.display = 'none';
-  const userInfo = currentUser ? (' (usuario: ' + currentUser.name + ' - ' + currentUser.email + ')') : '';
-  const body = encodeURIComponent(message + '\n\n---\n' + (currentUser ? currentUser.name + ' - ' + currentUser.email : ''));
-  const mailSubject = encodeURIComponent('[ConstructFlow] ' + subject);
-  window.location.href = 'mailto:consultoria@arqenergy.net?subject=' + mailSubject + '&body=' + body;
-  closeModal('contactModal');
+  const fullMessage = message + '\n\n---\n' + (currentUser ? currentUser.name + ' - ' + currentUser.email : '');
+  const mailSubject = '[ConstructFlow] ' + subject;
+  const to = 'consultoria@arqenergy.net';
+
+  const gmailUrl = 'https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(to) + '&su=' + encodeURIComponent(mailSubject) + '&body=' + encodeURIComponent(fullMessage);
+  const mailtoUrl = 'mailto:' + to + '?subject=' + encodeURIComponent(mailSubject) + '&body=' + encodeURIComponent(fullMessage);
+
+  document.getElementById('contactFormFields').classList.add('hidden');
+  document.getElementById('contactSendBtn').style.display = 'none';
+  const successBox = document.getElementById('contactSuccessBox');
+  successBox.classList.remove('hidden');
+  successBox.innerHTML = '<p style="font-size:13px;margin-bottom:12px;">Escolha como enviar:</p>'
+    + '<a href="' + gmailUrl + '" target="_blank" class="btn btn-primary" style="display:block;text-align:center;margin-bottom:8px;text-decoration:none;">Abrir no Gmail (web)</a>'
+    + '<a href="' + mailtoUrl + '" class="btn btn-secondary" style="display:block;text-align:center;margin-bottom:8px;text-decoration:none;">Abrir no meu app de E-mail</a>'
+    + '<button class="btn btn-secondary" style="width:100%;margin-bottom:8px;" onclick="copyContactMessage()">Copiar mensagem e endereco</button>'
+    + '<p id="contactCopyFeedback" style="font-size:12px;color:#16a34a;display:none;">Copiado! Cole no seu servico de e-mail preferido.</p>';
+
+  window._contactFullMessage = to + '\nAssunto: ' + mailSubject + '\n\n' + fullMessage;
+}
+
+function copyContactMessage() {
+  navigator.clipboard.writeText(window._contactFullMessage || '').then(() => {
+    const el = document.getElementById('contactCopyFeedback');
+    if (el) el.style.display = 'block';
+  });
 }
 
 function applyRolePermissions() {
@@ -1482,7 +1510,7 @@ async function renderActivityGantt() {
       const originalEnd = new Date(t.deadline);
       const replanEnd = t.replannedDeadline ? new Date(t.replannedDeadline) : null;
       const leftPct = ((s - minDate) / totalMs) * 100;
-      const plannedWidthPct = Math.max(1, ((originalEnd - s) / totalMs) * 100);
+      const plannedWidthPct = Math.max(1.2, ((originalEnd - s) / totalMs) * 100);
       const progress = t.progress || 0;
       const effectiveDeadline = replanEnd || originalEnd;
 
@@ -1496,13 +1524,13 @@ async function renderActivityGantt() {
       if (actualEndIsPast) {
         realizedColor = '#22c55e';
         realizedLeftPct = ((actualStart || s) - minDate) / totalMs * 100;
-        realizedWidthPct = Math.max(0.5, ((actualEnd - (actualStart || s)) / totalMs) * 100);
+        realizedWidthPct = Math.max(1, ((actualEnd - (actualStart || s)) / totalMs) * 100);
         realizadoLabel = 'Concluido em ' + fmtDate(actualEnd);
       } else if (actualStartIsPast) {
         const isOverdue = effectiveDeadline < now;
         realizedColor = isOverdue ? '#ef4444' : '#3b82f6';
         realizedLeftPct = (actualStart - minDate) / totalMs * 100;
-        realizedWidthPct = Math.max(0.5, ((now - actualStart) / totalMs) * 100);
+        realizedWidthPct = Math.max(1, ((now - actualStart) / totalMs) * 100);
         diasAtraso = isOverdue ? Math.round((now - effectiveDeadline) / (24 * 3600 * 1000)) : 0;
         realizadoLabel = isOverdue ? 'Atrasado ' + diasAtraso + ' dia(s) - iniciado em ' + fmtDate(actualStart) : 'Em execucao desde ' + fmtDate(actualStart);
       } else if (effectiveDeadline < now) {
@@ -1568,8 +1596,27 @@ function renderCurvaS() {
   const now = new Date();
   const totalDays = Math.max(1, (end - start) / (1000 * 60 * 60 * 24));
   const elapsedDays = Math.min(totalDays, Math.max(0, (now - start) / (1000 * 60 * 60 * 24)));
-  const tasks = p.tasks || [];
-  const avgProgress = tasks.length ? tasks.reduce((s, t) => s + (t.progress || 0), 0) / tasks.length : (p.status === 'completed' ? 100 : 0);
+
+  // So considera atividades de obra de nivel superior (evita contar grupo + subitens em dobro)
+  const allProjTasks = p.tasks || [];
+  const relevantTasks = allProjTasks.filter(t => t.type === 'atividade' && !t.parentId);
+  const tasksForCalc = relevantTasks.length ? relevantTasks : allProjTasks;
+
+  // Realizado ponderado por custo, so conta como concluido quando a data real de fim ja passou de verdade
+  const totalCost = tasksForCalc.reduce((s, t) => s + (t.cost || 0), 0);
+  let avgProgress;
+  if (totalCost > 0) {
+    const realizedCost = tasksForCalc.reduce((s, t) => {
+      const actualEndInPast = t.actualEndDate && new Date(t.actualEndDate) <= now;
+      return s + (actualEndInPast ? (t.cost || 0) : 0);
+    }, 0);
+    avgProgress = (realizedCost / totalCost) * 100;
+  } else if (tasksForCalc.length) {
+    const concluded = tasksForCalc.filter(t => t.actualEndDate && new Date(t.actualEndDate) <= now).length;
+    avgProgress = (concluded / tasksForCalc.length) * 100;
+  } else {
+    avgProgress = p.status === 'completed' ? 100 : 0;
+  }
 
   const W = 600, H = 220, pad = 30;
   function xFor(days) { return pad + (days / totalDays) * (W - 2 * pad); }
@@ -1578,7 +1625,10 @@ function renderCurvaS() {
   const plannedPath = 'M ' + xFor(0) + ' ' + yFor(0) + ' L ' + xFor(totalDays) + ' ' + yFor(100);
   const realizedPath = 'M ' + xFor(0) + ' ' + yFor(0) + ' L ' + xFor(elapsedDays) + ' ' + yFor(avgProgress);
   const nowX = xFor(elapsedDays);
-  const isLate = p.status === 'delayed' || (end < now && p.status !== 'completed');
+  // Linha real abaixo da planejada (no ponto de hoje) = atrasado; acima = adiantado
+  const expectedPctToday = (elapsedDays / totalDays) * 100;
+  const isLate = avgProgress < expectedPctToday - 2;
+  const diffDays = Math.round(((expectedPctToday - avgProgress) / 100) * totalDays);
 
   const svg = ''
     + '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg">'
@@ -1594,9 +1644,12 @@ function renderCurvaS() {
     + '<text x="' + pad + '" y="' + (pad - 8) + '" font-size="10" fill="#6b7280">100%</text>'
     + '</svg>';
 
+  const deslocLabel = Math.abs(diffDays) < 1 ? 'no prazo' : (isLate ? Math.abs(diffDays) + ' dia(s) de atraso' : Math.abs(diffDays) + ' dia(s) adiantado');
+
   container.innerHTML = '<div class="cal-legend" style="margin-bottom:8px;">'
     + '<span><span class="cal-legend-dot" style="background:#9ca3af;"></span>Planejado</span>'
     + '<span><span class="cal-legend-dot" style="background:' + (isLate ? '#ef4444' : '#22c55e') + ';"></span>Realizado (' + Math.round(avgProgress) + '%)</span>'
+    + '<span style="color:' + (isLate ? '#991b1b' : '#065f46') + ';font-weight:600;">' + deslocLabel + '</span>'
     + '</div>' + svg;
 }
 
@@ -1677,7 +1730,7 @@ async function saveProject() {
     closeModal('projectModal');
     if (masterFile && selected.length) {
       const r = await executeSheetImports(selected, savedProject.id);
-      alert('Projeto salvo. Planilha distribuida: ' + r.groupsCreated + ' grupo(s) de servico com ' + r.tasksCreated + ' subitem(ns), ' + r.expensesCreated + ' despesa(s), ' + r.risksCreated + ' risco(s)/pendencia(s).');
+      alert('Projeto salvo. Planilha distribuida: ' + r.groupsCreated + ' grupo(s) de servico com ' + r.tasksCreated + ' subitem(ns), ' + r.expensesCreated + ' despesa(s), ' + r.risksCreated + ' risco(s)/pendencia(s), ' + r.suppliesCreated + ' movimentacao(oes) de suprimentos.');
     } else if (masterFile && !selected.length) {
       alert('Projeto salvo, mas nenhuma aba da planilha foi marcada para importar.');
     }
@@ -1765,14 +1818,25 @@ const RISK_FIELDS = [
   { key: 'status', label: 'Status', synonyms: ['status', 'situacao'] }
 ];
 
+const SUPPLY_FIELDS = [
+  { key: 'materialName', label: 'Material', required: true, synonyms: ['material', 'insumo', 'produto', 'item', 'descricao'] },
+  { key: 'unit', label: 'Unidade', synonyms: ['unidade', 'und', 'unid'] },
+  { key: 'quantity', label: 'Quantidade', required: true, synonyms: ['quantidade', 'qtde', 'qtd', 'quant'] },
+  { key: 'unitValue', label: 'Valor Unitario', synonyms: ['valorunitario', 'valorunit', 'precounit'] },
+  { key: 'movementType', label: 'Tipo (entrada/saida)', synonyms: ['tipo', 'movimentacao', 'movimento'] },
+  { key: 'responsible', label: 'Responsavel', synonyms: ['responsavel', 'encarregado'] }
+];
+
 function detectSheetTarget(sheetName, headers) {
   const n = normKey(sheetName);
-  if (['tarefas', 'tasks', 'atividades', 'servicos', 'cronograma', 'montagem', 'materiais', 'maodeobra'].some(s => n.indexOf(s) > -1)) return 'tasks';
+  if (['suprimentos', 'materiais', 'estoque', 'insumos'].some(s => n.indexOf(s) > -1)) return 'suprimentos';
+  if (['tarefas', 'tasks', 'atividades', 'servicos', 'cronograma', 'montagem', 'maodeobra'].some(s => n.indexOf(s) > -1)) return 'tasks';
   if (['despesas', 'expenses', 'custos', 'gastos', 'financeiro'].some(s => n.indexOf(s) > -1)) return 'expenses';
   if (['riscos', 'risks', 'pendencias'].some(s => n.indexOf(s) > -1)) return 'risks';
   const normHeaders = headers.map(normKey);
   const hasAny = (keys) => normHeaders.some(h => keys.some(k => h === k || h.indexOf(k) > -1));
   if (hasAny(['probabilidade', 'impacto', 'impact', 'probability'])) return 'risks';
+  if (hasAny(['material', 'insumo']) && hasAny(['qtde', 'qtd', 'quantidade'])) return 'suprimentos';
   if (hasAny(['titulo', 'title', 'tarefa', 'atividade', 'descricao', 'servico']) && hasAny(['qtde', 'qtd', 'quantidade', 'und', 'unidade', 'valor', 'status', 'prioridade', 'priority'])) return 'tasks';
   if (hasAny(['valor', 'amount', 'custo'])) return 'expenses';
   return null;
@@ -1801,6 +1865,7 @@ function genericFindHeaderRow(aoa) {
     TASK_FIELDS.flatMap(f => f.synonyms),
     EXPENSE_FIELDS.flatMap(f => f.synonyms),
     RISK_FIELDS.flatMap(f => f.synonyms),
+    SUPPLY_FIELDS.flatMap(f => f.synonyms),
     ['item', 'qtde', 'qtd', 'quantidade', 'und', 'unid', 'unidade', 'valorunit', 'valortotal']
   ))];
   let bestRow = -1, bestScore = 0;
@@ -1891,7 +1956,7 @@ function analyzeComplementFile(input) {
 }
 
 async function executeSheetImports(selected, projectId) {
-  let groupsCreated = 0, tasksCreated = 0, expensesCreated = 0, risksCreated = 0;
+  let groupsCreated = 0, tasksCreated = 0, expensesCreated = 0, risksCreated = 0, suppliesCreated = 0;
   for (const sheetInfo of selected) {
     if (sheetInfo.target === 'tasks') {
       for (const group of sheetInfo.groups) {
@@ -1917,9 +1982,30 @@ async function executeSheetImports(selected, projectId) {
       const res = await fetch(API + '/api/v1/risks/bulk', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ rows: normalized }) });
       const d = await res.json();
       risksCreated += d.created || 0;
+    } else if (sheetInfo.target === 'suprimentos') {
+      const normalized = transformRowsGeneric(sheetInfo.rows, SUPPLY_FIELDS).filter(o => o.materialName && o.quantity);
+      const existingMaterialsRes = await fetch(API + '/api/v1/materials', { headers: apiHeaders() });
+      const existingMaterials = await existingMaterialsRes.json();
+      const materialCache = {};
+      existingMaterials.forEach(m => { materialCache[normKey(m.name)] = m.id; });
+      for (const row of normalized) {
+        const key = normKey(row.materialName);
+        let materialId = materialCache[key];
+        if (!materialId) {
+          const resMat = await fetch(API + '/api/v1/materials', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ name: row.materialName, unit: row.unit || 'un' }) });
+          const created = await resMat.json();
+          if (!resMat.ok) continue;
+          materialId = created.id;
+          materialCache[key] = materialId;
+        }
+        const typeRaw = normKey(row.movementType || '');
+        const type = typeRaw.indexOf('sai') > -1 ? 'saida' : 'entrada';
+        const resMov = await fetch(API + '/api/v1/movements', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ materialId, projectId, type, quantity: row.quantity, unitValue: row.unitValue || 0, responsible: row.responsible || null }) });
+        if (resMov.ok) suppliesCreated++;
+      }
     }
   }
-  return { groupsCreated, tasksCreated, expensesCreated, risksCreated };
+  return { groupsCreated, tasksCreated, expensesCreated, risksCreated, suppliesCreated };
 }
 
 async function confirmComplement() {
@@ -1935,7 +2021,7 @@ async function confirmComplement() {
   try {
     const r = await executeSheetImports(selected, projectId);
     closeModal('complementModal');
-    alert('Projeto complementado: ' + r.groupsCreated + ' grupo(s) de servico com ' + r.tasksCreated + ' subitem(ns), ' + r.expensesCreated + ' despesa(s), ' + r.risksCreated + ' risco(s)/pendencia(s).');
+    alert('Projeto complementado: ' + r.groupsCreated + ' grupo(s) de servico com ' + r.tasksCreated + ' subitem(ns), ' + r.expensesCreated + ' despesa(s), ' + r.risksCreated + ' risco(s)/pendencia(s), ' + r.suppliesCreated + ' movimentacao(oes) de suprimentos.');
     loadProjetosView();
   } catch (e) {
     error.textContent = 'Erro: ' + e.message;
@@ -2495,9 +2581,10 @@ function analyzeWorkbookSheets(wb, mode) {
         const result = boqParseSheetGrouped(sheetName, aoa);
         const totalItems = result.groups.reduce((s, g) => s + g.items.length, 0);
         sheetInfos.push({ name: sheetName, recognized: totalItems > 0, target: 'tasks', count: totalItems, groups: result.groups, note: totalItems ? (result.groups.length + ' grupo(s), ' + totalItems + ' tarefa(s)') : 'Nenhum item valido encontrado' });
-      } else if (target === 'expenses' || target === 'risks') {
+      } else if (target === 'expenses' || target === 'risks' || target === 'suprimentos') {
         const rows = XLSX.utils.sheet_to_json(sheet, { range: headerRowIndex, defval: '' });
-        sheetInfos.push({ name: sheetName, recognized: rows.length > 0, target, count: rows.length, rows, note: rows.length + ' linha(s) - vai para ' + (target === 'expenses' ? 'Despesas' : 'Riscos e Pendencias') });
+        const targetLabel = target === 'expenses' ? 'Despesas' : target === 'risks' ? 'Riscos e Pendencias' : 'Suprimentos';
+        sheetInfos.push({ name: sheetName, recognized: rows.length > 0, target, count: rows.length, rows, note: rows.length + ' linha(s) - vai para ' + targetLabel });
       } else {
         sheetInfos.push({ name: sheetName, recognized: false, target: null, count: 0, note: 'Nao foi possivel identificar o tipo de conteudo desta aba' });
       }
@@ -2510,8 +2597,8 @@ function renderSheetChecklist(containerId, sheetInfos) {
   const c = document.getElementById(containerId);
   c.innerHTML = '<p style="font-size:12px;color:#6b7280;margin-bottom:8px;">Confira o que cada aba contem antes de importar. Desmarque abas repetidas ou que voce nao quer trazer agora.</p>'
     + sheetInfos.map((s, idx) => {
-      const targetLabel = s.target === 'tasks' ? 'Tarefas/Atividades' : s.target === 'expenses' ? 'Despesas' : s.target === 'risks' ? 'Riscos/Pendencias' : 'Nao reconhecida';
-      const badgeColor = s.target === 'tasks' ? '#dbeafe;color:#1e40af' : s.target === 'expenses' ? '#fef9c3;color:#854d0e' : s.target === 'risks' ? '#fee2e2;color:#991b1b' : '#f3f4f6;color:#6b7280';
+      const targetLabel = s.target === 'tasks' ? 'Tarefas/Atividades' : s.target === 'expenses' ? 'Despesas' : s.target === 'risks' ? 'Riscos/Pendencias' : s.target === 'suprimentos' ? 'Suprimentos' : 'Nao reconhecida';
+      const badgeColor = s.target === 'tasks' ? '#dbeafe;color:#1e40af' : s.target === 'expenses' ? '#fef9c3;color:#854d0e' : s.target === 'risks' ? '#fee2e2;color:#991b1b' : s.target === 'suprimentos' ? '#dcfce7;color:#166534' : '#f3f4f6;color:#6b7280';
       return '<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid #f3f4f6;">'
         + '<input type="checkbox" id="sheetCheck' + idx + '" data-sheetidx="' + idx + '" ' + (s.recognized ? 'checked' : 'disabled') + ' style="margin-top:3px;">'
         + '<div style="flex:1;">'
