@@ -1617,23 +1617,36 @@ function renderCurvaS() {
   const totalDays = Math.max(1, (end - start) / (1000 * 60 * 60 * 24));
   const elapsedDays = Math.min(totalDays, Math.max(0, (now - start) / (1000 * 60 * 60 * 24)));
 
-  // So considera atividades de obra de nivel superior (evita contar grupo + subitens em dobro)
+  // Usa as atividades-folha (itens individuais, nao os grupos-resumo) - so elas tem data real de inicio/fim vinda da planilha
   const allProjTasks = p.tasks || [];
-  const relevantTasks = allProjTasks.filter(t => t.type === 'atividade' && !t.parentId);
-  const tasksForCalc = relevantTasks.length ? relevantTasks : allProjTasks;
+  const parentIdsSet = new Set(allProjTasks.filter(t => t.parentId).map(t => t.parentId));
+  const leafTasks = allProjTasks.filter(t => t.type === 'atividade' && !parentIdsSet.has(t.id));
+  const tasksForCalc = leafTasks.length ? leafTasks : allProjTasks;
 
-  // Realizado ponderado por custo, so conta como concluido quando a data real de fim ja passou de verdade
+  function taskRealizedFraction(t) {
+    const deadline = t.deadline ? new Date(t.deadline) : null;
+    const replanEnd = t.replannedDeadline ? new Date(t.replannedDeadline) : null;
+    const effectiveDeadline = replanEnd || deadline;
+    const actualStart = t.actualStartDate ? new Date(t.actualStartDate) : null;
+    const actualEnd = t.actualEndDate ? new Date(t.actualEndDate) : null;
+    if (actualEnd && actualEnd <= now) return 1;
+    if (actualStart && actualStart <= now) {
+      if (!effectiveDeadline || effectiveDeadline <= actualStart) return 0.5;
+      const frac = (now - actualStart) / (effectiveDeadline - actualStart);
+      return Math.max(0, Math.min(0.95, frac));
+    }
+    if (t.progress) return Math.min(0.95, t.progress / 100);
+    return 0;
+  }
+
+  // Realizado ponderado por custo, com credito parcial proporcional ao tempo decorrido em atividades ja iniciadas
   const totalCost = tasksForCalc.reduce((s, t) => s + (t.cost || 0), 0);
   let avgProgress;
   if (totalCost > 0) {
-    const realizedCost = tasksForCalc.reduce((s, t) => {
-      const actualEndInPast = t.actualEndDate && new Date(t.actualEndDate) <= now;
-      return s + (actualEndInPast ? (t.cost || 0) : 0);
-    }, 0);
+    const realizedCost = tasksForCalc.reduce((s, t) => s + taskRealizedFraction(t) * (t.cost || 0), 0);
     avgProgress = (realizedCost / totalCost) * 100;
   } else if (tasksForCalc.length) {
-    const concluded = tasksForCalc.filter(t => t.actualEndDate && new Date(t.actualEndDate) <= now).length;
-    avgProgress = (concluded / tasksForCalc.length) * 100;
+    avgProgress = (tasksForCalc.reduce((s, t) => s + taskRealizedFraction(t), 0) / tasksForCalc.length) * 100;
   } else {
     avgProgress = p.status === 'completed' ? 100 : 0;
   }
