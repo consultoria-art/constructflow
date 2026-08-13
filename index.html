@@ -1640,23 +1640,73 @@ function renderCurvaS() {
   }
 
   // Realizado ponderado por custo, com credito parcial proporcional ao tempo decorrido em atividades ja iniciadas
-  const totalCost = tasksForCalc.reduce((s, t) => s + (t.cost || 0), 0);
+  const totalCostForAvg = tasksForCalc.reduce((s, t) => s + (t.cost || 0), 0);
   let avgProgress;
-  if (totalCost > 0) {
+  if (totalCostForAvg > 0) {
     const realizedCost = tasksForCalc.reduce((s, t) => s + taskRealizedFraction(t) * (t.cost || 0), 0);
-    avgProgress = (realizedCost / totalCost) * 100;
+    avgProgress = (realizedCost / totalCostForAvg) * 100;
   } else if (tasksForCalc.length) {
     avgProgress = (tasksForCalc.reduce((s, t) => s + taskRealizedFraction(t), 0) / tasksForCalc.length) * 100;
   } else {
     avgProgress = p.status === 'completed' ? 100 : 0;
   }
 
-  const W = 600, H = 220, pad = 30;
-  function xFor(days) { return pad + (days / totalDays) * (W - 2 * pad); }
-  function yFor(pct) { return (H - pad) - (pct / 100) * (H - 2 * pad); }
+  // Constroi a curva de verdade: progresso acumulado planejado e realizado em varios pontos no tempo (nao so inicio/hoje)
+  function plannedFractionAt(t, d) {
+    const ts = t.startDate ? new Date(t.startDate) : null;
+    const te = (t.replannedDeadline ? new Date(t.replannedDeadline) : (t.deadline ? new Date(t.deadline) : null));
+    if (!ts || !te) return 0;
+    if (d <= ts) return 0;
+    if (d >= te) return 1;
+    if (te <= ts) return 1;
+    return (d - ts) / (te - ts);
+  }
+  function realizedFractionAt(t, d) {
+    const deadline = t.deadline ? new Date(t.deadline) : null;
+    const replanEnd = t.replannedDeadline ? new Date(t.replannedDeadline) : null;
+    const effectiveDeadline = replanEnd || deadline;
+    const actualStart = t.actualStartDate ? new Date(t.actualStartDate) : null;
+    const actualEnd = t.actualEndDate ? new Date(t.actualEndDate) : null;
+    if (actualEnd && actualEnd <= d) return 1;
+    if (actualStart && actualStart <= d) {
+      if (!effectiveDeadline || effectiveDeadline <= actualStart) return 0.5;
+      return Math.max(0, Math.min(0.95, (d - actualStart) / (effectiveDeadline - actualStart)));
+    }
+    return 0;
+  }
 
-  const plannedPath = 'M ' + xFor(0) + ' ' + yFor(0) + ' L ' + xFor(totalDays) + ' ' + yFor(100);
-  const realizedPath = 'M ' + xFor(0) + ' ' + yFor(0) + ' L ' + xFor(elapsedDays) + ' ' + yFor(avgProgress);
+  const rawTotalCost = tasksForCalc.reduce((s, t) => s + (t.cost || 0), 0);
+  const hasCostData = rawTotalCost > 0;
+  const totalCost = hasCostData ? rawTotalCost : tasksForCalc.length;
+  const N_POINTS = 24;
+  const plannedPoints = [], realizedPoints = [];
+  for (let i = 0; i <= N_POINTS; i++) {
+    const dayOffset = (totalDays * i) / N_POINTS;
+    const d = new Date(start.getTime() + dayOffset * 24 * 60 * 60 * 1000);
+    let plannedPct, realizedPct;
+    if (!hasCostData) {
+      plannedPct = tasksForCalc.length ? (tasksForCalc.reduce((s, t) => s + plannedFractionAt(t, d), 0) / tasksForCalc.length) * 100 : (dayOffset / totalDays) * 100;
+      realizedPct = tasksForCalc.length ? (tasksForCalc.reduce((s, t) => s + realizedFractionAt(t, d), 0) / tasksForCalc.length) * 100 : 0;
+    } else {
+      plannedPct = (tasksForCalc.reduce((s, t) => s + plannedFractionAt(t, d) * (t.cost || 0), 0) / totalCost) * 100;
+      realizedPct = (tasksForCalc.reduce((s, t) => s + realizedFractionAt(t, d) * (t.cost || 0), 0) / totalCost) * 100;
+    }
+    plannedPoints.push({ day: dayOffset, pct: plannedPct });
+    if (dayOffset <= elapsedDays) realizedPoints.push({ day: dayOffset, pct: realizedPct });
+  }
+  // Garante que o ultimo ponto realizado seja exatamente hoje
+  if (!realizedPoints.length || realizedPoints[realizedPoints.length - 1].day < elapsedDays) {
+    realizedPoints.push({ day: elapsedDays, pct: avgProgress });
+  } else {
+    realizedPoints[realizedPoints.length - 1] = { day: elapsedDays, pct: avgProgress };
+  }
+
+  const W = 640, H = 240, pad = 34;
+  function xFor(days) { return pad + (days / totalDays) * (W - 2 * pad); }
+  function yFor(pct) { return (H - pad) - (Math.max(0, Math.min(100, pct)) / 100) * (H - 2 * pad); }
+
+  const plannedPath = 'M ' + plannedPoints.map(pt => xFor(pt.day) + ' ' + yFor(pt.pct)).join(' L ');
+  const realizedPath = 'M ' + realizedPoints.map(pt => xFor(pt.day) + ' ' + yFor(pt.pct)).join(' L ');
   const nowX = xFor(elapsedDays);
   // Linha real abaixo da planejada (no ponto de hoje) = atrasado; acima = adiantado
   const expectedPctToday = (elapsedDays / totalDays) * 100;
