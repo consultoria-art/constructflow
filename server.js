@@ -240,6 +240,24 @@ async function runAutomation(organizationId) {
   return { alertsCreated, projectsMarkedDelayed };
 }
 
+async function logAudit(organizationId, { entityType, entityId, action, channel, userId, userName, previousValue, newValue }) {
+  try {
+    await prisma.auditLog.create({
+      data: {
+        entityType,
+        entityId: entityId || '',
+        action,
+        channel: channel || 'web',
+        userId: userId || null,
+        userName: userName || null,
+        previousValue: previousValue !== undefined ? JSON.stringify(previousValue) : null,
+        newValue: newValue !== undefined ? JSON.stringify(newValue) : null,
+        organizationId
+      }
+    });
+  } catch (e) { console.error('Falha ao gravar log de auditoria:', e.message); }
+}
+
 function monthKey(date) {
   const d = new Date(date);
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
@@ -536,7 +554,9 @@ const server = http.createServer(async (req, res) => {
       if (data.startDate) data.startDate = new Date(data.startDate);
       if (!canSeeFinance(user.role)) { delete data.budget; delete data.spent; }
       else { if (data.budget !== undefined) data.budget = parseFloat(data.budget) || 0; if (data.spent !== undefined) data.spent = parseFloat(data.spent) || 0; }
-      return sendJSON(res, 201, await prisma.project.create({ data, include: { responsibleUser: true } }));
+      const createdProject = await prisma.project.create({ data, include: { responsibleUser: true } });
+      logAudit(user.organizationId, { entityType: 'Project', entityId: createdProject.id, action: 'create', userId: user.userId, userName: user.email, newValue: { name: createdProject.name, budget: createdProject.budget, status: createdProject.status } });
+      return sendJSON(res, 201, createdProject);
     }
 
     if (req.url === '/api/v1/projects/bulk' && req.method === 'POST') {
@@ -586,11 +606,15 @@ const server = http.createServer(async (req, res) => {
       if (!canSeeFinance(user.role)) { delete data.budget; delete data.spent; }
       else { if (data.budget !== undefined) data.budget = parseFloat(data.budget) || 0; if (data.spent !== undefined) data.spent = parseFloat(data.spent) || 0; }
       delete data.organizationId;
-      return sendJSON(res, 200, await prisma.project.update({ where: { id }, data, include: { responsibleUser: true } }));
+      const before = await prisma.project.findUnique({ where: { id } });
+      const updated = await prisma.project.update({ where: { id }, data, include: { responsibleUser: true } });
+      logAudit(user.organizationId, { entityType: 'Project', entityId: id, action: 'update', userId: user.userId, userName: user.email, previousValue: before ? { name: before.name, budget: before.budget, status: before.status, deadline: before.deadline, startDate: before.startDate } : null, newValue: { name: updated.name, budget: updated.budget, status: updated.status, deadline: updated.deadline, startDate: updated.startDate } });
+      return sendJSON(res, 200, updated);
     }
 
     if (req.url.startsWith('/api/v1/projects/') && req.method === 'DELETE') {
       const id = req.url.split('/')[4];
+      const before = await prisma.project.findUnique({ where: { id } });
       await prisma.task.deleteMany({ where: { projectId: id } });
       await prisma.alert.deleteMany({ where: { projectId: id } });
       await prisma.comment.deleteMany({ where: { projectId: id } });
@@ -599,6 +623,7 @@ const server = http.createServer(async (req, res) => {
       await prisma.riskIssue.deleteMany({ where: { projectId: id } });
       await prisma.document.deleteMany({ where: { projectId: id } });
       await prisma.project.delete({ where: { id } });
+      logAudit(user.organizationId, { entityType: 'Project', entityId: id, action: 'delete', userId: user.userId, userName: user.email, previousValue: before ? { name: before.name } : null });
       return sendJSON(res, 200, { success: true });
     }
 
@@ -663,6 +688,7 @@ const server = http.createServer(async (req, res) => {
         const proj = await prisma.project.findUnique({ where: { id: newTask.projectId } });
         notifyTaskAssignment(newTask, proj ? proj.name : '');
       }
+      logAudit(user.organizationId, { entityType: 'Task', entityId: newTask.id, action: 'create', userId: user.userId, userName: user.email, newValue: { title: newTask.title, status: newTask.status, deadline: newTask.deadline, cost: newTask.cost } });
       return sendJSON(res, 201, newTask);
     }
 
@@ -706,6 +732,7 @@ const server = http.createServer(async (req, res) => {
         });
         created++;
       }
+      if (created > 0) logAudit(user.organizationId, { entityType: 'Task', entityId: 'bulk', action: 'bulk_import', userId: user.userId, userName: user.email, newValue: { created, skipped } });
       return sendJSON(res, 201, { created, skipped });
     }
 
@@ -726,6 +753,7 @@ const server = http.createServer(async (req, res) => {
         const proj = await prisma.project.findUnique({ where: { id: updated.projectId } });
         notifyTaskAssignment(updated, proj ? proj.name : '');
       }
+      logAudit(user.organizationId, { entityType: 'Task', entityId: id, action: 'update', userId: user.userId, userName: user.email, previousValue: before ? { status: before.status, deadline: before.deadline, progress: before.progress, assigneeId: before.assigneeId } : null, newValue: { status: updated.status, deadline: updated.deadline, progress: updated.progress, assigneeId: updated.assigneeId } });
       return sendJSON(res, 200, updated);
     }
 
@@ -748,10 +776,22 @@ const server = http.createServer(async (req, res) => {
 
     if (req.url.startsWith('/api/v1/tasks/') && req.method === 'DELETE') {
       const id = req.url.split('/')[4];
+      const before = await prisma.task.findUnique({ where: { id } });
       await prisma.document.deleteMany({ where: { taskId: id } });
       await prisma.task.deleteMany({ where: { parentId: id } });
       await prisma.task.delete({ where: { id } });
+      logAudit(user.organizationId, { entityType: 'Task', entityId: id, action: 'delete', userId: user.userId, userName: user.email, previousValue: before ? { title: before.title } : null });
       return sendJSON(res, 200, { success: true });
+    }
+
+    if (req.url === '/api/v1/audit-log' && req.method === 'GET') {
+      if (user.role !== 'admin') return sendJSON(res, 403, { error: 'Apenas administradores podem ver o log de auditoria' });
+      const urlObj = new URL(req.url, 'http://x');
+      const entityType = urlObj.searchParams.get('entityType');
+      const where = { organizationId: user.organizationId };
+      if (entityType) where.entityType = entityType;
+      const logs = await prisma.auditLog.findMany({ where, orderBy: { createdAt: 'desc' }, take: 300 });
+      return sendJSON(res, 200, logs);
     }
 
     if (req.url === '/api/v1/alerts' && req.method === 'GET') {
@@ -877,6 +917,7 @@ const server = http.createServer(async (req, res) => {
       const { description, amount, category, date, responsible, projectId } = await parseBody(req);
       if (!description || !amount || !projectId) return sendJSON(res, 400, { error: 'Descricao, valor e projeto sao obrigatorios' });
       const expense = await prisma.expense.create({ data: { description, amount: parseFloat(amount), category: category || null, date: date ? new Date(date) : new Date(), responsible: responsible || null, projectId } });
+      logAudit(user.organizationId, { entityType: 'Expense', entityId: expense.id, action: 'create', userId: user.userId, userName: user.email, newValue: { description: expense.description, amount: expense.amount } });
       return sendJSON(res, 201, expense);
     }
 
@@ -886,13 +927,18 @@ const server = http.createServer(async (req, res) => {
       const data = await parseBody(req);
       if (data.amount !== undefined) data.amount = parseFloat(data.amount) || 0;
       if (data.date) data.date = new Date(data.date);
-      return sendJSON(res, 200, await prisma.expense.update({ where: { id }, data }));
+      const before = await prisma.expense.findUnique({ where: { id } });
+      const updated = await prisma.expense.update({ where: { id }, data });
+      logAudit(user.organizationId, { entityType: 'Expense', entityId: id, action: 'update', userId: user.userId, userName: user.email, previousValue: before ? { description: before.description, amount: before.amount } : null, newValue: { description: updated.description, amount: updated.amount } });
+      return sendJSON(res, 200, updated);
     }
 
     if (req.url.startsWith('/api/v1/expenses/') && req.method === 'DELETE') {
       if (!canSeeFinance(user.role)) return sendJSON(res, 403, { error: 'Sem permissao para ver dados financeiros' });
       const id = req.url.split('/')[4];
+      const before = await prisma.expense.findUnique({ where: { id } });
       await prisma.expense.delete({ where: { id } });
+      logAudit(user.organizationId, { entityType: 'Expense', entityId: id, action: 'delete', userId: user.userId, userName: user.email, previousValue: before ? { description: before.description, amount: before.amount } : null });
       return sendJSON(res, 200, { success: true });
     }
 
