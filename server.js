@@ -399,7 +399,7 @@ const server = http.createServer(async (req, res) => {
       const ipKey = 'signup:' + (req.socket.remoteAddress || 'unknown');
       const rlSignup = checkRateLimit(ipKey);
       if (rlSignup.blocked) return sendJSON(res, 429, { error: 'Muitas tentativas de cadastro. Tente novamente em ' + rlSignup.minutesLeft + ' minuto(s).' });
-      const { name, email, password, organizationName } = await parseBody(req);
+      const { name, email, password, organizationName, phone } = await parseBody(req);
       if (!name || !email || !password || !organizationName)
         return sendJSON(res, 400, { error: 'Todos os campos sao obrigatorios' });
       if (password.length < 6)
@@ -409,7 +409,7 @@ const server = http.createServer(async (req, res) => {
       const slug = organizationName.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 40);
       const hash = await bcrypt.hash(password, 10);
       const org = await prisma.organization.create({
-        data: { name: organizationName, slug, active: false, subscriptionStatus: 'pending', users: { create: { name, email, passwordHash: hash, role: 'admin' } } },
+        data: { name: organizationName, slug, active: false, subscriptionStatus: 'pending', users: { create: { name, email, phone: phone || null, passwordHash: hash, role: 'admin' } } },
         include: { users: true }
       });
       const token = jwt.sign({ userId: org.users[0].id, email, organizationId: org.id, role: 'admin' }, JWT_SECRET, { expiresIn: '7d' });
@@ -549,7 +549,13 @@ const server = http.createServer(async (req, res) => {
     if (req.url === '/api/v1/auth/me' && req.method === 'GET') {
       const u = await prisma.user.findUnique({ where: { id: user.userId }, include: { organization: true } });
       if (!u) return sendJSON(res, 404, { error: 'Usuario nao encontrado' });
-      return sendJSON(res, 200, { id: u.id, name: u.name, email: u.email, role: u.role, organization: { id: u.organization.id, name: u.organization.name, slug: u.organization.slug } });
+      return sendJSON(res, 200, { id: u.id, name: u.name, email: u.email, phone: u.phone, role: u.role, organization: { id: u.organization.id, name: u.organization.name, slug: u.organization.slug } });
+    }
+
+    if (req.url === '/api/v1/auth/me/phone' && req.method === 'PUT') {
+      const { phone } = await parseBody(req);
+      const updated = await prisma.user.update({ where: { id: user.userId }, data: { phone: phone || null } });
+      return sendJSON(res, 200, { id: updated.id, phone: updated.phone });
     }
 
     if (req.url === '/api/v1/ai/chat' && req.method === 'POST') {
