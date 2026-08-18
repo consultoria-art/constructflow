@@ -146,6 +146,39 @@ function parseBody(req) {
   });
 }
 
+function parseFormBody(req) {
+  return new Promise((resolve) => {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      try {
+        const params = new URLSearchParams(body);
+        const obj = {};
+        params.forEach((v, k) => { obj[k] = v; });
+        resolve(obj);
+      } catch { resolve({}); }
+    });
+  });
+}
+
+function normalizePhone(s) {
+  return String(s || '').replace(/\D/g, '');
+}
+
+// Estado em memoria do fluxo de aprovacao por WhatsApp (numero -> id da solicitacao pendente de decisao/forma de pagamento)
+const pendingApprovalReply = new Map();
+const pendingPaymentMethodReply = new Map();
+
+async function applyPurchaseDecision(purchaseRequest, status, extra, actor) {
+  const data = { status };
+  if (status === 'approved') { data.approvedById = actor.userId || null; data.approvedAt = new Date(); data.paymentMethod = extra.paymentMethod || null; }
+  if (status === 'rejected') { data.approvedById = actor.userId || null; data.approvedAt = new Date(); data.rejectionReason = extra.rejectionReason || null; }
+  if (status === 'adjustment_requested') data.rejectionReason = extra.rejectionReason || null;
+  const updated = await prisma.purchaseRequest.update({ where: { id: purchaseRequest.id }, data });
+  logAudit(actor.organizationId, { entityType: 'PurchaseRequest', entityId: purchaseRequest.id, action: status, userId: actor.userId || null, userName: actor.userName, channel: actor.channel || 'web', previousValue: { status: purchaseRequest.status }, newValue: { status: updated.status, paymentMethod: updated.paymentMethod } });
+  return updated;
+}
+
 function getUser(req) {
   const auth = req.headers['authorization'];
   if (!auth || !auth.startsWith('Bearer ')) return null;
@@ -401,6 +434,74 @@ const server = http.createServer(async (req, res) => {
       clearAttempts(rateLimitKey);
       const token = jwt.sign({ userId: user.id, email, organizationId: user.organizationId, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
       return sendJSON(res, 200, { token, user: { id: user.id, name: user.name, email: user.email, role: user.role }, organization: { id: user.organization.id, name: user.organization.name, slug: user.organization.slug } });
+    }
+
+    // ============ WHATSAPP WEBHOOK (Twilio) ============
+    if (req.url === '/api/v1/whatsapp/webhook' && req.method === 'POST') {
+      const body = await parseFormBody(req);
+      const fromRaw = body.From || '';
+      const text = String(body.Body || '').trim();
+      const phone = normalizePhone(fromRaw);
+      res.setHeader('Content-Type', 'text/xml');
+
+      const replyTo = async (msg) => { if (phone) sendWhatsAppNotification(phone, msg); };
+
+      if (!phone) { res.statusCode = 200; return res.end('<Response></Response>'); }
+
+      const senderUser = await prisma.user.findFirst({ where: { phone: { contains: phone.slice(-8) } } });
+      if (!senderUser) { await replyTo('Numero nao cadastrado na plataforma. Peca ao administrador para vincular seu WhatsApp em Equipe.'); res.statusCode = 200; return res.end('<Response></Response>'); }
+      if (!canSeeFinance(senderUser.role)) { await replyTo('Seu perfil nao tem permissao para aprovar compras.'); res.statusCode = 200; return res.end('<Response></Response>'); }
+
+      const actor = { userId: senderUser.id, userName: senderUser.name + ' (WhatsApp)', organizationId: senderUser.organizationId, channel: 'whatsapp' };
+
+      // Passo 2: aguardando escolha da forma de pagamento apos aprovacao
+      if (pendingPaymentMethodReply.has(phone)) {
+        const prId = pendingPaymentMethodReply.get(phone);
+        const methods = { '1': 'Boleto', '2': 'Cartao', '3': 'Pix', '4': 'Transferencia' };
+        const choice = methods[text.trim()];
+        if (!choice) { await replyTo('Nao entendi. Responda 1-Boleto 2-Cartao 3-Pix 4-Transferencia'); res.statusCode = 200; return res.end('<Response></Response>'); }
+        const pr = await prisma.purchaseRequest.findUnique({ where: { id: prId } });
+        if (pr) {
+          await applyPurchaseDecision(pr, 'approved', { paymentMethod: choice }, actor);
+          const requester = await prisma.user.findUnique({ where: { id: pr.requestedById } });
+          await replyTo('Compra "' + pr.itemName + '" aprovada com pagamento em ' + choice + '.');
+          if (requester && requester.phone) sendWhatsAppNotification(requester.phone, 'Sua solicitacao "' + pr.itemName + '" foi aprovada. Forma de pagamento: ' + choice + '.');
+        }
+        pendingPaymentMethodReply.delete(phone);
+        res.statusCode = 200; return res.end('<Response></Response>');
+      }
+
+      // Passo 1: aguardando decisao de aprovar/reprovar/ajustar
+      if (pendingApprovalReply.has(phone)) {
+        const prId = pendingApprovalReply.get(phone);
+        const pr = await prisma.purchaseRequest.findUnique({ where: { id: prId } });
+        if (!pr || pr.status !== 'pending_approval') { pendingApprovalReply.delete(phone); await replyTo('Essa solicitacao ja foi decidida por outra pessoa ou nao existe mais.'); res.statusCode = 200; return res.end('<Response></Response>'); }
+        const choice = text.trim();
+        if (choice === '1') {
+          pendingApprovalReply.delete(phone);
+          pendingPaymentMethodReply.set(phone, prId);
+          await replyTo('Aprovada! Qual a forma de pagamento? Responda: 1-Boleto 2-Cartao 3-Pix 4-Transferencia');
+        } else if (choice === '2') {
+          pendingApprovalReply.delete(phone);
+          await applyPurchaseDecision(pr, 'rejected', { rejectionReason: 'Reprovado via WhatsApp' }, actor);
+          const requester = await prisma.user.findUnique({ where: { id: pr.requestedById } });
+          await replyTo('Compra "' + pr.itemName + '" reprovada.');
+          if (requester && requester.phone) sendWhatsAppNotification(requester.phone, 'Sua solicitacao "' + pr.itemName + '" foi reprovada.');
+        } else if (choice === '3') {
+          pendingApprovalReply.delete(phone);
+          await applyPurchaseDecision(pr, 'adjustment_requested', { rejectionReason: 'Ajuste solicitado via WhatsApp' }, actor);
+          const requester = await prisma.user.findUnique({ where: { id: pr.requestedById } });
+          await replyTo('Pedido de ajuste registrado para "' + pr.itemName + '".');
+          if (requester && requester.phone) sendWhatsAppNotification(requester.phone, 'Foi pedido um ajuste na sua solicitacao "' + pr.itemName + '". Verifique na plataforma.');
+        } else {
+          await replyTo('Nao entendi. Responda 1-Aprovar 2-Reprovar 3-Pedir Ajuste, referente a: ' + pr.itemName);
+        }
+        res.statusCode = 200; return res.end('<Response></Response>');
+      }
+
+      await replyTo('Nao ha nenhuma aprovacao pendente aguardando sua resposta agora. Acesse a plataforma para ver solicitacoes: ' + APP_URL);
+      res.statusCode = 200;
+      return res.end('<Response></Response>');
     }
 
     // ============ BILLING (STRIPE) ============
@@ -821,7 +922,11 @@ const server = http.createServer(async (req, res) => {
         const subject = 'Nova solicitacao de compra: ' + pr.itemName;
         const html = '<p>' + (requester ? requester.name : 'Um engenheiro') + ' solicitou a compra de <strong>' + pr.itemName + '</strong> (qtd ' + pr.quantity + ') no projeto ' + project.name + '. Valor estimado: R$ ' + pr.estimatedValue.toFixed(2) + '.</p><p>Acesse a plataforma para aprovar: ' + APP_URL + '</p>';
         sendEmailNotification(a.email, subject, html);
-        if (a.phone) sendWhatsAppNotification(a.phone, 'Nova solicitacao de compra: ' + pr.itemName + ' (' + project.name + '), valor estimado R$ ' + pr.estimatedValue.toFixed(2) + '. Acesse a plataforma para aprovar.');
+        if (a.phone) {
+          const cleanPhone = normalizePhone(a.phone);
+          pendingApprovalReply.set(cleanPhone, pr.id);
+          sendWhatsAppNotification(a.phone, 'Nova solicitacao de compra: "' + pr.itemName + '" (' + project.name + '), valor estimado R$ ' + pr.estimatedValue.toFixed(2) + '.\n\nResponda:\n1 - Aprovar\n2 - Reprovar\n3 - Pedir Ajuste');
+        }
       });
       return sendJSON(res, 201, pr);
     }
