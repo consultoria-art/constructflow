@@ -36,6 +36,8 @@ model User {
   comments       Comment[]
   assignedTasks  Task[]
   responsibleProjects Project[]
+  requestedPurchases PurchaseRequest[] @relation("PurchaseRequests")
+  approvedPurchases  PurchaseRequest[] @relation("PurchaseApprovals")
 }
 model Project {
   id             String   @id @default(cuid())
@@ -60,6 +62,7 @@ model Project {
   expenses   Expense[]
   risks      RiskIssue[]
   documents  Document[]
+  purchaseRequests PurchaseRequest[]
 }
 model TaskColumn {
   id             String   @id @default(cuid())
@@ -162,6 +165,47 @@ model RiskIssue {
   projectId   String
   project     Project  @relation(fields: [projectId], references: [id])
 }
+model PurchaseRequest {
+  id                   String    @id @default(cuid())
+  itemName             String
+  description          String?
+  quantity             Float     @default(1)
+  estimatedValue       Float     @default(0)
+  status               String    @default("pending_approval")
+  isSingleSource       Boolean   @default(false)
+  singleSourceReason   String?
+  paymentMethod        String?
+  supplierChosenId     String?
+  approvedById         String?
+  approvedBy           User?     @relation("PurchaseApprovals", fields: [approvedById], references: [id])
+  requestedById        String
+  requestedBy          User      @relation("PurchaseRequests", fields: [requestedById], references: [id])
+  invoiceNumber        String?
+  invoiceValue         Float?
+  invoiceDate          DateTime?
+  expectedDeliveryDate DateTime?
+  deliveredAt          DateTime?
+  approvedAt           DateTime?
+  rejectionReason      String?
+  projectId            String
+  project              Project   @relation(fields: [projectId], references: [id])
+  quotes               SupplierQuote[]
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+model SupplierQuote {
+  id                String   @id @default(cuid())
+  supplierName      String
+  value             Float
+  deliveryDays      Int?
+  paymentCondition  String?
+  isWinner          Boolean  @default(false)
+  purchaseRequestId String
+  purchaseRequest   PurchaseRequest @relation(fields: [purchaseRequestId], references: [id])
+  createdAt         DateTime @default(now())
+}
+
 model AuditLog {
   id             String   @id @default(cuid())
   entityType     String
