@@ -784,6 +784,101 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { success: true });
     }
 
+    if (req.url === '/api/v1/purchase-requests' && req.method === 'GET') {
+      const reqs = await prisma.purchaseRequest.findMany({
+        where: { project: { organizationId: user.organizationId } },
+        include: { quotes: true, requestedBy: true, approvedBy: true, project: true },
+        orderBy: { createdAt: 'desc' }
+      });
+      return sendJSON(res, 200, reqs.map(r => ({
+        id: r.id, itemName: r.itemName, description: r.description, quantity: r.quantity, estimatedValue: r.estimatedValue,
+        status: r.status, isSingleSource: r.isSingleSource, singleSourceReason: r.singleSourceReason, paymentMethod: r.paymentMethod,
+        invoiceNumber: r.invoiceNumber, invoiceValue: r.invoiceValue, invoiceDate: r.invoiceDate, expectedDeliveryDate: r.expectedDeliveryDate,
+        deliveredAt: r.deliveredAt, approvedAt: r.approvedAt, rejectionReason: r.rejectionReason, createdAt: r.createdAt,
+        projectId: r.projectId, projectName: r.project.name,
+        requestedByName: r.requestedBy.name, approvedByName: r.approvedBy ? r.approvedBy.name : null,
+        quotes: r.quotes
+      })));
+    }
+
+    if (req.url === '/api/v1/purchase-requests' && req.method === 'POST') {
+      const { itemName, description, quantity, estimatedValue, isSingleSource, singleSourceReason, projectId, expectedDeliveryDate } = await parseBody(req);
+      if (!itemName || !projectId) return sendJSON(res, 400, { error: 'Item e projeto sao obrigatorios' });
+      const project = await prisma.project.findFirst({ where: { id: projectId, organizationId: user.organizationId } });
+      if (!project) return sendJSON(res, 404, { error: 'Projeto nao encontrado' });
+      const pr = await prisma.purchaseRequest.create({
+        data: {
+          itemName, description: description || null, quantity: parseFloat(quantity) || 1, estimatedValue: parseFloat(estimatedValue) || 0,
+          isSingleSource: !!isSingleSource, singleSourceReason: singleSourceReason || null,
+          expectedDeliveryDate: expectedDeliveryDate ? new Date(expectedDeliveryDate) : null,
+          requestedById: user.userId, projectId
+        }
+      });
+      logAudit(user.organizationId, { entityType: 'PurchaseRequest', entityId: pr.id, action: 'create', userId: user.userId, userName: user.email, newValue: { itemName: pr.itemName, estimatedValue: pr.estimatedValue } });
+      const approvers = await prisma.user.findMany({ where: { organizationId: user.organizationId, role: { in: ['admin', 'coordenador'] } } });
+      const requester = await prisma.user.findUnique({ where: { id: user.userId } });
+      approvers.forEach(a => {
+        const subject = 'Nova solicitacao de compra: ' + pr.itemName;
+        const html = '<p>' + (requester ? requester.name : 'Um engenheiro') + ' solicitou a compra de <strong>' + pr.itemName + '</strong> (qtd ' + pr.quantity + ') no projeto ' + project.name + '. Valor estimado: R$ ' + pr.estimatedValue.toFixed(2) + '.</p><p>Acesse a plataforma para aprovar: ' + APP_URL + '</p>';
+        sendEmailNotification(a.email, subject, html);
+        if (a.phone) sendWhatsAppNotification(a.phone, 'Nova solicitacao de compra: ' + pr.itemName + ' (' + project.name + '), valor estimado R$ ' + pr.estimatedValue.toFixed(2) + '. Acesse a plataforma para aprovar.');
+      });
+      return sendJSON(res, 201, pr);
+    }
+
+    if (req.url.startsWith('/api/v1/purchase-requests/') && req.url.endsWith('/quotes') && req.method === 'POST') {
+      const purchaseRequestId = req.url.split('/')[4];
+      const { supplierName, value, deliveryDays, paymentCondition } = await parseBody(req);
+      if (!supplierName || value === undefined) return sendJSON(res, 400, { error: 'Fornecedor e valor sao obrigatorios' });
+      const quote = await prisma.supplierQuote.create({ data: { supplierName, value: parseFloat(value) || 0, deliveryDays: deliveryDays ? parseInt(deliveryDays) : null, paymentCondition: paymentCondition || null, purchaseRequestId } });
+      return sendJSON(res, 201, quote);
+    }
+
+    if (req.url.startsWith('/api/v1/purchase-requests/') && req.method === 'PUT') {
+      const id = req.url.split('/')[4];
+      const body = await parseBody(req);
+      const data = {};
+      const before = await prisma.purchaseRequest.findUnique({ where: { id }, include: { project: true, requestedBy: true } });
+      if (!before) return sendJSON(res, 404, { error: 'Solicitacao nao encontrada' });
+
+      if (body.status === 'approved' || body.status === 'rejected') {
+        if (!canSeeFinance(user.role)) return sendJSON(res, 403, { error: 'Somente Administrador ou Coordenador podem aprovar/reprovar compras' });
+        data.status = body.status;
+        data.approvedById = user.userId;
+        data.approvedAt = new Date();
+        if (body.status === 'approved') { data.paymentMethod = body.paymentMethod || null; data.supplierChosenId = body.supplierChosenId || null; }
+        if (body.status === 'rejected') data.rejectionReason = body.rejectionReason || null;
+      }
+      if (body.status === 'adjustment_requested') { data.status = body.status; data.rejectionReason = body.rejectionReason || null; }
+      if (body.status === 'waiting_delivery') data.status = body.status;
+      if (body.status === 'delivered') { data.status = body.status; data.deliveredAt = new Date(); }
+      if (body.invoiceNumber !== undefined) data.invoiceNumber = body.invoiceNumber;
+      if (body.invoiceValue !== undefined) data.invoiceValue = parseFloat(body.invoiceValue) || 0;
+      if (body.invoiceDate) data.invoiceDate = new Date(body.invoiceDate);
+      if (body.expectedDeliveryDate !== undefined) data.expectedDeliveryDate = body.expectedDeliveryDate ? new Date(body.expectedDeliveryDate) : null;
+
+      const updated = await prisma.purchaseRequest.update({ where: { id }, data });
+      logAudit(user.organizationId, { entityType: 'PurchaseRequest', entityId: id, action: body.status || 'update', userId: user.userId, userName: user.email, previousValue: { status: before.status }, newValue: { status: updated.status, paymentMethod: updated.paymentMethod } });
+
+      if (body.status === 'approved' || body.status === 'rejected' || body.status === 'adjustment_requested') {
+        const requester = before.requestedBy;
+        const statusLabel = body.status === 'approved' ? 'aprovada' : body.status === 'rejected' ? 'reprovada' : 'ajuste solicitado';
+        const subject = 'Solicitacao de compra ' + statusLabel + ': ' + before.itemName;
+        const html = '<p>Sua solicitacao de <strong>' + before.itemName + '</strong> foi <strong>' + statusLabel + '</strong>' + (body.rejectionReason ? ': ' + body.rejectionReason : '') + '.</p>';
+        sendEmailNotification(requester.email, subject, html);
+        if (requester.phone) sendWhatsAppNotification(requester.phone, 'Sua solicitacao "' + before.itemName + '" foi ' + statusLabel + '.' + (body.rejectionReason ? ' Motivo: ' + body.rejectionReason : ''));
+      }
+      return sendJSON(res, 200, updated);
+    }
+
+    if (req.url.startsWith('/api/v1/purchase-requests/') && req.method === 'DELETE') {
+      const id = req.url.split('/')[4];
+      await prisma.supplierQuote.deleteMany({ where: { purchaseRequestId: id } });
+      await prisma.purchaseRequest.delete({ where: { id } });
+      logAudit(user.organizationId, { entityType: 'PurchaseRequest', entityId: id, action: 'delete', userId: user.userId, userName: user.email });
+      return sendJSON(res, 200, { success: true });
+    }
+
     if (req.url === '/api/v1/audit-log' && req.method === 'GET') {
       if (user.role !== 'admin') return sendJSON(res, 403, { error: 'Apenas administradores podem ver o log de auditoria' });
       const urlObj = new URL(req.url, 'http://x');
