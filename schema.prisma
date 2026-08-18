@@ -20,6 +20,7 @@ model Organization {
   projects  Project[]
   materials Material[]
   taskColumns TaskColumn[]
+  auditLogs AuditLog[]
 }
 model User {
   id           String   @id @default(cuid())
@@ -88,88 +89,4 @@ model Task {
   hoursLogged Float    @default(0)
   cost        Float    @default(0)
   isMilestone Boolean  @default(false)
-  parentId    String?
-  parent      Task?    @relation("TaskParent", fields: [parentId], references: [id])
-  children    Task[]   @relation("TaskParent")
-  documents   Document[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id])
-}
-model Alert {
-  id        String   @id @default(cuid())
-  title     String
-  message   String
-  type      String   @default("info")
-  read      Boolean  @default(false)
-  createdAt DateTime @default(now())
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id])
-}
-model Material {
-  id             String   @id @default(cuid())
-  name           String
-  unit           String   @default("un")
-  createdAt      DateTime @default(now())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  movements      StockMovement[]
-}
-model StockMovement {
-  id          String   @id @default(cuid())
-  type        String
-  quantity    Float
-  unitValue   Float    @default(0)
-  notes       String?
-  responsible String?
-  createdAt   DateTime @default(now())
-  materialId  String
-  material    Material @relation(fields: [materialId], references: [id])
-  projectId   String?
-  project     Project? @relation(fields: [projectId], references: [id])
-}
-model Comment {
-  id        String   @id @default(cuid())
-  message   String
-  createdAt DateTime @default(now())
-  projectId String
-  project   Project  @relation(fields: [projectId], references: [id])
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-}
-model Expense {
-  id          String   @id @default(cuid())
-  description String
-  amount      Float
-  category    String?
-  date        DateTime @default(now())
-  responsible String?
-  createdAt   DateTime @default(now())
-  projectId   String
-  project     Project  @relation(fields: [projectId], references: [id])
-}
-model RiskIssue {
-  id          String   @id @default(cuid())
-  type        String   @default("risco")
-  title       String
-  description String?
-  probability String?
-  impact      String?
-  status      String   @default("aberto")
-  createdAt   DateTime @default(now())
-  projectId   String
-  project     Project  @relation(fields: [projectId], references: [id])
-}
-model Document {
-  id         String   @id @default(cuid())
-  filename   String
-  mimeType   String
-  data       String
-  uploadedBy String?
-  createdAt  DateTime @default(now())
-  projectId  String
-  project    Project  @relation(fields: [projectId], references: [id])
-  taskId     String?
-  task       Task?    @relation(fields: [taskId], references: [id])
-}
+  parentId
