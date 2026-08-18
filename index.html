@@ -299,6 +299,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <a data-view="despesas" onclick="showView('despesas')"><span>💵</span> Despesas</a>
 <a data-view="riscos" onclick="showView('riscos')"><span>⚠️</span> Riscos e Pendencias</a>
 <a data-view="equipe" onclick="showView('equipe')"><span>👥</span> Equipe</a>
+<a data-view="auditoria" onclick="showView('auditoria')"><span>🛡️</span> Auditoria</a>
 <a data-view="configuracoes" onclick="showView('configuracoes')"><span>⚙️</span> Configuracoes</a>
 </nav>
 <div class="user-info">
@@ -461,6 +462,23 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
     </div>
     <div class="hint-box">💡 Engenheiros nao veem dados financeiros (Despesas, Orcamento). Coordenadores e Administradores veem tudo.</div>
     <div class="card"><div id="equipeTable"><div class="loading">Carregando...</div></div></div>
+  </div>
+
+  <!-- AUDITORIA -->
+  <div class="view-section" id="view-auditoria">
+    <div class="header">
+      <div><h1>Auditoria</h1><p>Trilha completa de acoes na plataforma - quem fez o que, quando</p></div>
+    </div>
+    <div class="hint-box">💡 Visivel apenas para Administradores. Mostra as ultimas 300 acoes: criacao, edicao e exclusao de projetos, tarefas e despesas.</div>
+    <div style="margin-bottom:12px;">
+      <select id="auditFilterSelect" class="input" style="max-width:260px;display:inline-block;" onchange="loadAuditLog()">
+        <option value="">Todos os tipos</option>
+        <option value="Project">Projetos</option>
+        <option value="Task">Tarefas</option>
+        <option value="Expense">Despesas</option>
+      </select>
+    </div>
+    <div class="card"><div id="auditTable"><div class="loading">Carregando...</div></div></div>
   </div>
 
   <!-- CONFIGURACOES -->
@@ -1027,7 +1045,32 @@ function applyRolePermissions() {
   document.getElementById('kpiOrcamentoCard') && document.getElementById('kpiOrcamentoCard').classList.toggle('hidden', !financeOk);
   document.getElementById('ownerSummarySection') && document.getElementById('ownerSummarySection').classList.toggle('hidden', !isOwnerUI());
   document.getElementById('revenueForecastCard') && document.getElementById('revenueForecastCard').classList.toggle('hidden', !isOwnerUI());
+  const auditNav = document.querySelector('.sidebar nav a[data-view="auditoria"]');
+  if (auditNav) auditNav.classList.toggle('hidden', !isOwnerUI());
   document.getElementById('aiFab').classList.remove('hidden');
+}
+
+async function loadAuditLog() {
+  const c = document.getElementById('auditTable');
+  const entityType = document.getElementById('auditFilterSelect').value;
+  c.innerHTML = '<div class="loading">Carregando...</div>';
+  try {
+    const url = API + '/api/v1/audit-log' + (entityType ? '?entityType=' + entityType : '');
+    const res = await fetch(url, { headers: apiHeaders() });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Erro'); }
+    const logs = await res.json();
+    if (!logs.length) { c.innerHTML = '<div class="loading">Nenhuma acao registrada ainda.</div>'; return; }
+    const actionLabel = { create: 'Criou', update: 'Editou', delete: 'Excluiu', bulk_import: 'Importou em lote' };
+    const entityLabel = { Project: 'Projeto', Task: 'Tarefa', Expense: 'Despesa' };
+    let html = '<table class="table-projects"><thead><tr><th>Data/Hora</th><th>Usuario</th><th>Acao</th><th>Tipo</th><th>Canal</th><th>Detalhes</th></tr></thead><tbody>';
+    logs.forEach(l => {
+      const dt = new Date(l.createdAt).toLocaleString('pt-BR');
+      const details = l.newValue ? esc(JSON.stringify(JSON.parse(l.newValue))) : '';
+      html += '<tr><td style="white-space:nowrap;font-size:12px;">' + dt + '</td><td>' + esc(l.userName || '-') + '</td><td>' + (actionLabel[l.action] || esc(l.action)) + '</td><td>' + (entityLabel[l.entityType] || esc(l.entityType)) + '</td><td>' + (l.channel === 'whatsapp' ? '📱 WhatsApp' : '💻 Web') + '</td><td style="font-size:11px;color:#6b7280;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + details + '">' + details + '</td></tr>';
+    });
+    html += '</tbody></table>';
+    c.innerHTML = html;
+  } catch (e) { c.innerHTML = '<div class="loading">Erro ao carregar: ' + e.message + '</div>'; }
 }
 
 let selectedPlanKey = null;
@@ -1151,6 +1194,7 @@ function showView(view) {
   else if (view === 'despesas') loadDespesasView();
   else if (view === 'riscos') loadRiscosView();
   else if (view === 'equipe') loadEquipeView();
+  else if (view === 'auditoria') loadAuditLog();
   else if (view === 'configuracoes') loadConfiguracoesView();
 }
 
