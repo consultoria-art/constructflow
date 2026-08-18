@@ -149,6 +149,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 .priority-medium { background: #ffedd5; color: #9a3412; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
 .priority-high { background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
 .deviation-badge { background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 600; margin-left: 6px; }
+.status-badge { padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; white-space: nowrap; }
 .loading { text-align: center; padding: 40px; color: #6b7280; }
 .hidden { display: none !important; }
 .view-section { display: none; }
@@ -296,6 +297,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <a data-view="projetos" onclick="showView('projetos')"><span>📁</span> Projetos</a>
 <a data-view="tarefas" onclick="showView('tarefas')"><span>🗂️</span> Tarefas</a>
 <a data-view="suprimentos" onclick="showView('suprimentos')"><span>📦</span> Suprimentos</a>
+<a data-view="compras" onclick="showView('compras')"><span>🛒</span> Compras</a>
 <a data-view="despesas" onclick="showView('despesas')"><span>💵</span> Despesas</a>
 <a data-view="riscos" onclick="showView('riscos')"><span>⚠️</span> Riscos e Pendencias</a>
 <a data-view="equipe" onclick="showView('equipe')"><span>👥</span> Equipe</a>
@@ -430,6 +432,16 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
     </div>
     <div class="card" id="panelMateriais"><div id="materiaisTable"><div class="loading">Carregando...</div></div></div>
     <div class="card hidden" id="panelMovimentacoes"><div id="movimentacoesTable"><div class="loading">Carregando...</div></div></div>
+  </div>
+
+  <!-- COMPRAS -->
+  <div class="view-section" id="view-compras">
+    <div class="header">
+      <div><h1>Compras</h1><p>Solicitacoes de compra, cotacoes e aprovacoes</p></div>
+      <div class="header-right"><button class="btn btn-primary" onclick="openPurchaseModal()">+ Nova Solicitacao</button></div>
+    </div>
+    <div class="hint-box">💡 O engenheiro solicita, o comprador cota fornecedores, e o Administrador/Coordenador aprova definindo a forma de pagamento. Tudo fica registrado na Auditoria.</div>
+    <div class="card"><div id="comprasTable"><div class="loading">Carregando...</div></div></div>
   </div>
 
   <!-- DESPESAS -->
@@ -765,6 +777,75 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 
 <!-- MODAL BOQ -->
 <!-- MODAL COMPLEMENTAR PROJETO -->
+<!-- MODAL NOVA SOLICITACAO DE COMPRA -->
+<div class="modal-overlay" id="purchaseModal">
+<div class="modal-box">
+<h2 style="margin-bottom:20px;">Nova Solicitacao de Compra</h2>
+<div class="error" id="purchaseError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+<label class="field">Projeto</label>
+<select id="purchaseProjectSelect" class="input"></select>
+<label class="field">Item</label>
+<input id="purchaseItemName" type="text" class="input" placeholder="Ex: Disjuntor 15kV">
+<label class="field">Descricao (opcional)</label>
+<textarea id="purchaseDescription" class="input" rows="2"></textarea>
+<label class="field">Quantidade</label>
+<input id="purchaseQuantity" type="number" min="0" step="any" class="input" value="1">
+<label class="field">Valor estimado (R$)</label>
+<input id="purchaseEstimatedValue" type="number" min="0" step="any" class="input" value="0">
+<label class="field">Previsao de entrega (opcional)</label>
+<input id="purchaseExpectedDelivery" type="date" class="input">
+<label class="field" style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="purchaseSingleSource" style="width:auto;margin:0;" onchange="document.getElementById('purchaseSingleSourceReasonWrap').classList.toggle('hidden', !this.checked)"> Fornecedor unico (dispensa 3 cotacoes)</label>
+<div id="purchaseSingleSourceReasonWrap" class="hidden">
+<label class="field">Justificativa do fornecedor unico</label>
+<input id="purchaseSingleSourceReason" type="text" class="input">
+</div>
+<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;">
+<button class="btn btn-secondary" onclick="closeModal('purchaseModal')">Cancelar</button>
+<button class="btn btn-primary" onclick="savePurchaseRequest()">Enviar Solicitacao</button>
+</div>
+</div>
+</div>
+
+<!-- MODAL DETALHES / APROVACAO DE COMPRA -->
+<div class="modal-overlay" id="purchaseDetailModal">
+<div class="modal-box" style="width:560px;">
+<h2 style="margin-bottom:8px;" id="purchaseDetailTitle">Solicitacao</h2>
+<p id="purchaseDetailMeta" style="font-size:12px;color:#6b7280;margin-bottom:16px;"></p>
+<div class="error" id="purchaseDetailError" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none;"></div>
+
+<h3 style="font-size:13px;margin-bottom:8px;">Cotacoes de Fornecedores</h3>
+<div id="purchaseQuotesList" style="margin-bottom:12px;"></div>
+<div style="display:flex;gap:8px;margin-bottom:16px;">
+<input id="quoteSupplierName" type="text" class="input" placeholder="Fornecedor" style="margin-bottom:0;">
+<input id="quoteValue" type="number" min="0" step="any" class="input" placeholder="Valor R$" style="margin-bottom:0;max-width:120px;">
+<input id="quoteDeliveryDays" type="number" min="0" class="input" placeholder="Dias entrega" style="margin-bottom:0;max-width:110px;">
+<button class="btn btn-secondary btn-sm" onclick="addSupplierQuote()">+ Cotacao</button>
+</div>
+
+<div id="purchaseApprovalBox" class="hidden" style="background:#f9fafb;border-radius:8px;padding:14px;margin-bottom:12px;">
+<h3 style="font-size:13px;margin-bottom:8px;">Aprovacao</h3>
+<label class="field">Forma de pagamento</label>
+<select id="purchasePaymentMethod" class="input">
+<option value="Boleto">Boleto</option>
+<option value="Cartao">Cartao</option>
+<option value="Pix">Pix</option>
+<option value="Transferencia">Transferencia</option>
+</select>
+<div style="display:flex;gap:10px;margin-top:10px;">
+<button class="btn btn-primary" style="flex:1;" onclick="decidePurchase('approved')">✅ Aprovar</button>
+<button class="btn btn-danger" style="flex:1;" onclick="decidePurchase('rejected')">❌ Reprovar</button>
+</div>
+<button class="btn btn-secondary" style="width:100%;margin-top:8px;" onclick="decidePurchase('adjustment_requested')">Pedir Ajuste</button>
+</div>
+
+<div id="purchaseStatusActions" style="margin-bottom:16px;"></div>
+
+<div style="display:flex;gap:12px;justify-content:flex-end;">
+<button class="btn btn-secondary" onclick="closeModal('purchaseDetailModal')">Fechar</button>
+</div>
+</div>
+</div>
+
 <!-- MODAL COLUNA DO KANBAN -->
 <div class="modal-overlay" id="columnModal">
 <div class="modal-box" style="width:380px;">
@@ -1050,6 +1131,167 @@ function applyRolePermissions() {
   document.getElementById('aiFab').classList.remove('hidden');
 }
 
+// ============ COMPRAS ============
+let cachedPurchaseRequests = [];
+let currentPurchaseDetailId = null;
+
+const PURCHASE_STATUS_LABELS = {
+  pending_approval: 'Aguardando Aprovacao',
+  approved: 'Aprovado',
+  rejected: 'Reprovado',
+  adjustment_requested: 'Ajuste Solicitado',
+  waiting_delivery: 'Aguardando Entrega',
+  delivered: 'Entregue'
+};
+const PURCHASE_STATUS_COLORS = {
+  pending_approval: '#fef9c3;color:#854d0e',
+  approved: '#dcfce7;color:#166534',
+  rejected: '#fee2e2;color:#991b1b',
+  adjustment_requested: '#fed7aa;color:#9a3412',
+  waiting_delivery: '#dbeafe;color:#1e40af',
+  delivered: '#e0e7ff;color:#3730a3'
+};
+
+async function loadComprasView() {
+  const c = document.getElementById('comprasTable');
+  c.innerHTML = '<div class="loading">Carregando...</div>';
+  try {
+    const [res, projRes] = await Promise.all([
+      fetch(API + '/api/v1/purchase-requests', { headers: apiHeaders() }),
+      fetch(API + '/api/v1/projects', { headers: apiHeaders() })
+    ]);
+    cachedPurchaseRequests = await res.json();
+    cachedProjects = await projRes.json();
+    if (!cachedPurchaseRequests.length) { c.innerHTML = '<div class="loading">Nenhuma solicitacao de compra ainda.</div>'; return; }
+    let html = '<table class="table-projects"><thead><tr><th>Item</th><th>Projeto</th><th>Qtde</th><th>Valor Est.</th><th>Status</th><th>Solicitante</th><th>Data</th></tr></thead><tbody>';
+    cachedPurchaseRequests.forEach(r => {
+      const badge = '<span class="status-badge" style="background:' + (PURCHASE_STATUS_COLORS[r.status] || '#f3f4f6;color:#6b7280') + ';">' + (PURCHASE_STATUS_LABELS[r.status] || r.status) + '</span>';
+      html += '<tr style="cursor:pointer;" onclick="openPurchaseDetail(\'' + r.id + '\')"><td><strong>' + esc(r.itemName) + '</strong></td><td>' + esc(r.projectName) + '</td><td>' + r.quantity + '</td><td>' + fmtMoney(r.estimatedValue) + '</td><td>' + badge + '</td><td>' + esc(r.requestedByName) + '</td><td>' + fmtDate(r.createdAt) + '</td></tr>';
+    });
+    html += '</tbody></table>';
+    c.innerHTML = html;
+  } catch (e) { c.innerHTML = '<div class="loading">Erro ao carregar</div>'; }
+}
+
+function openPurchaseModal() {
+  document.getElementById('purchaseProjectSelect').innerHTML = cachedProjects.map(p => '<option value="' + p.id + '">' + esc(p.name) + '</option>').join('');
+  document.getElementById('purchaseItemName').value = '';
+  document.getElementById('purchaseDescription').value = '';
+  document.getElementById('purchaseQuantity').value = 1;
+  document.getElementById('purchaseEstimatedValue').value = 0;
+  document.getElementById('purchaseExpectedDelivery').value = '';
+  document.getElementById('purchaseSingleSource').checked = false;
+  document.getElementById('purchaseSingleSourceReasonWrap').classList.add('hidden');
+  document.getElementById('purchaseSingleSourceReason').value = '';
+  document.getElementById('purchaseError').style.display = 'none';
+  document.getElementById('purchaseModal').style.display = 'flex';
+}
+
+async function savePurchaseRequest() {
+  const itemName = document.getElementById('purchaseItemName').value;
+  const projectId = document.getElementById('purchaseProjectSelect').value;
+  const error = document.getElementById('purchaseError');
+  if (!itemName || !projectId) { error.textContent = 'Item e projeto sao obrigatorios'; error.style.display = 'block'; return; }
+  error.style.display = 'none';
+  const body = {
+    itemName, projectId,
+    description: document.getElementById('purchaseDescription').value,
+    quantity: document.getElementById('purchaseQuantity').value,
+    estimatedValue: document.getElementById('purchaseEstimatedValue').value,
+    expectedDeliveryDate: document.getElementById('purchaseExpectedDelivery').value || undefined,
+    isSingleSource: document.getElementById('purchaseSingleSource').checked,
+    singleSourceReason: document.getElementById('purchaseSingleSourceReason').value
+  };
+  try {
+    const res = await fetch(API + '/api/v1/purchase-requests', { method: 'POST', headers: apiHeaders(), body: JSON.stringify(body) });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+    closeModal('purchaseModal');
+    loadComprasView();
+  } catch (e) { error.textContent = 'Erro: ' + e.message; error.style.display = 'block'; }
+}
+
+function openPurchaseDetail(id) {
+  currentPurchaseDetailId = id;
+  const r = cachedPurchaseRequests.find(x => x.id === id);
+  if (!r) return;
+  document.getElementById('purchaseDetailTitle').textContent = r.itemName;
+  document.getElementById('purchaseDetailMeta').innerHTML = esc(r.projectName) + ' &middot; Qtde ' + r.quantity + ' &middot; Valor estimado ' + fmtMoney(r.estimatedValue) + ' &middot; Solicitado por ' + esc(r.requestedByName) + ' em ' + fmtDate(r.createdAt) + (r.isSingleSource ? ' &middot; <span style="color:#9a3412;">Fornecedor unico: ' + esc(r.singleSourceReason || '-') + '</span>' : '');
+  document.getElementById('purchaseDetailError').style.display = 'none';
+
+  document.getElementById('purchaseQuotesList').innerHTML = r.quotes.length
+    ? '<table class="table-projects"><thead><tr><th>Fornecedor</th><th>Valor</th><th>Prazo</th></tr></thead><tbody>' + r.quotes.map(q => '<tr><td>' + esc(q.supplierName) + '</td><td>' + fmtMoney(q.value) + '</td><td>' + (q.deliveryDays || '-') + ' dia(s)</td></tr>').join('') + '</tbody></table>'
+    : '<p style="font-size:12px;color:#6b7280;">Nenhuma cotacao registrada ainda.</p>';
+
+  const approvalBox = document.getElementById('purchaseApprovalBox');
+  approvalBox.classList.toggle('hidden', !(r.status === 'pending_approval' && canSeeFinanceUI()));
+
+  const actionsEl = document.getElementById('purchaseStatusActions');
+  let actionsHtml = '<p style="font-size:13px;"><strong>Status atual:</strong> ' + (PURCHASE_STATUS_LABELS[r.status] || r.status) + '</p>';
+  if (r.status === 'rejected' || r.status === 'adjustment_requested') {
+    actionsHtml += '<p style="font-size:12px;color:#9a3412;">Motivo: ' + esc(r.rejectionReason || '-') + '</p>';
+  }
+  if (r.status === 'approved') {
+    actionsHtml += '<p style="font-size:12px;color:#166534;">Forma de pagamento: ' + esc(r.paymentMethod || '-') + '</p>';
+    actionsHtml += '<button class="btn btn-secondary btn-sm" onclick="markPurchaseStatus(\'waiting_delivery\')">Marcar como Aguardando Entrega</button>';
+  }
+  if (r.status === 'waiting_delivery') {
+    actionsHtml += '<label class="field">Numero da Nota Fiscal</label><input id="purchaseInvoiceNumber" type="text" class="input" value="' + esc(r.invoiceNumber || '') + '">'
+      + '<label class="field">Valor da Nota (R$)</label><input id="purchaseInvoiceValue" type="number" step="any" class="input" value="' + (r.invoiceValue || 0) + '">'
+      + '<button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="markPurchaseStatus(\'delivered\')">Marcar como Entregue</button>';
+  }
+  if (r.status === 'delivered') {
+    actionsHtml += '<p style="font-size:12px;color:#3730a3;">Nota Fiscal: ' + esc(r.invoiceNumber || '-') + ' &middot; ' + fmtMoney(r.invoiceValue || 0) + ' &middot; Entregue em ' + fmtDate(r.deliveredAt) + '</p>';
+  }
+  actionsEl.innerHTML = actionsHtml;
+
+  document.getElementById('purchaseDetailModal').style.display = 'flex';
+}
+
+async function addSupplierQuote() {
+  const supplierName = document.getElementById('quoteSupplierName').value;
+  const value = document.getElementById('quoteValue').value;
+  const deliveryDays = document.getElementById('quoteDeliveryDays').value;
+  if (!supplierName || !value) { alert('Preencha fornecedor e valor'); return; }
+  try {
+    await fetch(API + '/api/v1/purchase-requests/' + currentPurchaseDetailId + '/quotes', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ supplierName, value, deliveryDays }) });
+    document.getElementById('quoteSupplierName').value = '';
+    document.getElementById('quoteValue').value = '';
+    document.getElementById('quoteDeliveryDays').value = '';
+    await loadComprasView();
+    openPurchaseDetail(currentPurchaseDetailId);
+  } catch (e) { alert('Erro ao adicionar cotacao'); }
+}
+
+async function decidePurchase(status) {
+  const error = document.getElementById('purchaseDetailError');
+  const body = { status };
+  if (status === 'approved') body.paymentMethod = document.getElementById('purchasePaymentMethod').value;
+  if (status === 'rejected' || status === 'adjustment_requested') {
+    const reason = prompt(status === 'rejected' ? 'Motivo da reprovacao:' : 'O que precisa ser ajustado?');
+    if (reason === null) return;
+    body.rejectionReason = reason;
+  }
+  try {
+    const res = await fetch(API + '/api/v1/purchase-requests/' + currentPurchaseDetailId, { method: 'PUT', headers: apiHeaders(), body: JSON.stringify(body) });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+    await loadComprasView();
+    openPurchaseDetail(currentPurchaseDetailId);
+  } catch (e) { error.textContent = 'Erro: ' + e.message; error.style.display = 'block'; }
+}
+
+async function markPurchaseStatus(status) {
+  const body = { status };
+  if (status === 'delivered') {
+    body.invoiceNumber = document.getElementById('purchaseInvoiceNumber').value;
+    body.invoiceValue = document.getElementById('purchaseInvoiceValue').value;
+  }
+  try {
+    await fetch(API + '/api/v1/purchase-requests/' + currentPurchaseDetailId, { method: 'PUT', headers: apiHeaders(), body: JSON.stringify(body) });
+    await loadComprasView();
+    openPurchaseDetail(currentPurchaseDetailId);
+  } catch (e) { alert('Erro ao atualizar'); }
+}
+
 async function loadAuditLog() {
   const c = document.getElementById('auditTable');
   const entityType = document.getElementById('auditFilterSelect').value;
@@ -1191,6 +1433,7 @@ function showView(view) {
   else if (view === 'projetos') loadProjetosView();
   else if (view === 'tarefas') loadKanban();
   else if (view === 'suprimentos') loadSuprimentosView();
+  else if (view === 'compras') loadComprasView();
   else if (view === 'despesas') loadDespesasView();
   else if (view === 'riscos') loadRiscosView();
   else if (view === 'equipe') loadEquipeView();
