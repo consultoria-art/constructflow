@@ -265,6 +265,8 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <input type="email" id="signupEmail" placeholder="seu@email.com">
 <label>Nome da Empresa</label>
 <input type="text" id="signupOrg" placeholder="Nome da sua empresa">
+<label>WhatsApp (opcional, com DDD - para notificacoes e aprovacoes)</label>
+<input type="text" id="signupPhone" placeholder="Ex: 5565999999999">
 <label>Senha</label>
 <input type="password" id="signupPassword" placeholder="Minimo 6 caracteres">
 <button onclick="signup()">Criar conta</button>
@@ -509,7 +511,11 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
         <h3>Sua Conta</h3>
         <p style="font-size:13px;color:#374151;margin-bottom:6px;"><strong>Nome:</strong> <span id="cfgUserName"></span></p>
         <p style="font-size:13px;color:#374151;margin-bottom:6px;"><strong>Email:</strong> <span id="cfgUserEmail"></span></p>
-        <p style="font-size:13px;color:#374151;"><strong>Perfil:</strong> <span id="cfgUserRole"></span></p>
+        <p style="font-size:13px;color:#374151;margin-bottom:10px;"><strong>Perfil:</strong> <span id="cfgUserRole"></span></p>
+        <div class="error" id="myPhoneError" style="color:#dc2626;font-size:13px;margin-bottom:8px;display:none;"></div>
+        <label class="field">Seu WhatsApp (para notificacoes e aprovacoes)</label>
+        <input class="input" id="cfgUserPhone" type="text" placeholder="Ex: 5565999999999">
+        <button class="btn btn-secondary btn-sm" onclick="saveMyPhone()">Salvar WhatsApp</button>
       </div>
       <div class="card" id="cfgBillingCard">
         <h3>Assinatura</h3>
@@ -1011,6 +1017,7 @@ async function signup() {
   const name = document.getElementById('signupName').value;
   const email = document.getElementById('signupEmail').value;
   const organizationName = document.getElementById('signupOrg').value;
+  const phone = document.getElementById('signupPhone').value.replace(/\D/g, '');
   const password = document.getElementById('signupPassword').value;
   const error = document.getElementById('signupError');
   const loader = document.getElementById('signupLoader');
@@ -1019,7 +1026,7 @@ async function signup() {
   if (password.length < 6) { error.textContent = 'Senha deve ter no minimo 6 caracteres'; error.style.display = 'block'; return; }
   loader.style.display = 'block';
   try {
-    const res = await fetch(API + '/api/v1/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, email, password, organizationName }) });
+    const res = await fetch(API + '/api/v1/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, email, password, organizationName, phone: phone || undefined }) });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Erro ao criar conta');
     setToken(data.token);
@@ -3409,6 +3416,10 @@ function loadConfiguracoesView() {
   document.getElementById('cfgUserName').textContent = currentUser.name;
   document.getElementById('cfgUserEmail').textContent = currentUser.email;
   document.getElementById('cfgUserRole').textContent = currentUser.role === 'admin' ? 'Administrador' : currentUser.role === 'coordenador' ? 'Coordenador' : 'Engenheiro';
+  document.getElementById('myPhoneError').style.display = 'none';
+  fetch(API + '/api/v1/auth/me', { headers: apiHeaders() }).then(r => r.json()).then(u => {
+    document.getElementById('cfgUserPhone').value = u.phone || '';
+  });
   document.getElementById('cfgBillingCard').classList.toggle('hidden', currentUser.role !== 'admin');
   if (currentUser.role === 'admin') {
     fetch(API + '/api/v1/billing/status', { headers: apiHeaders() }).then(r => r.json()).then(s => {
@@ -3416,6 +3427,16 @@ function loadConfiguracoesView() {
       document.getElementById('cfgSubStatus').textContent = s.subscriptionStatus === 'active' ? 'Ativa' : s.subscriptionStatus === 'overdue' ? 'Pagamento em atraso' : s.subscriptionStatus === 'canceled' ? 'Cancelada' : 'Pendente';
     });
   }
+}
+
+async function saveMyPhone() {
+  const phone = document.getElementById('cfgUserPhone').value.replace(/\D/g, '');
+  const error = document.getElementById('myPhoneError');
+  try {
+    await fetch(API + '/api/v1/auth/me/phone', { method: 'PUT', headers: apiHeaders(), body: JSON.stringify({ phone: phone || null }) });
+    error.style.display = 'none';
+    alert('WhatsApp atualizado com sucesso.');
+  } catch (e) { error.textContent = 'Erro ao salvar'; error.style.display = 'block'; }
 }
 
 const PLAN_LABELS = { basico: 'Basico', pro: 'Pro', enterprise: 'Enterprise', free: 'Nenhum (gratuito)' };
