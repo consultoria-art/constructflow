@@ -50,7 +50,8 @@ async function sendWhatsAppNotification(toPhone, message) {
   try {
     const cleanPhone = normalizePhone(toPhone);
     const to = 'whatsapp:+' + cleanPhone;
-    const params = new URLSearchParams({ From: TWILIO_WHATSAPP_FROM, To: to, Body: message });
+    const brandedMessage = '🏗️ *ConstructFlow*\n\n' + message;
+    const params = new URLSearchParams({ From: TWILIO_WHATSAPP_FROM, To: to, Body: brandedMessage });
     await fetch('https://api.twilio.com/2010-04-01/Accounts/' + TWILIO_ACCOUNT_SID + '/Messages.json', {
       method: 'POST',
       headers: {
@@ -71,7 +72,7 @@ async function notifyTaskAssignment(task, projectName) {
   const html = '<p>Ola ' + assignee.name + ',</p><p>Voce foi designado(a) para a tarefa <strong>' + task.title + '</strong> no projeto <strong>' + projectName + '</strong>.</p><p><strong>Prazo:</strong> ' + deadlineStr + '</p><p>Acesse a plataforma para mais detalhes: ' + APP_URL + '</p>';
   const wppMsg = 'Ola ' + assignee.name + '! Voce foi designado(a) para a tarefa "' + task.title + '" no projeto ' + projectName + '. Prazo: ' + deadlineStr + '.';
   sendEmailNotification(assignee.email, subject, html);
-  if (assignee.phone) sendWhatsAppNotification(assignee.phone, wppMsg);
+  if (assignee.phone && assignee.whatsappConsent) sendWhatsAppNotification(assignee.phone, wppMsg);
 }
 
 async function notifyTaskOverdue(task, projectName) {
@@ -83,7 +84,7 @@ async function notifyTaskOverdue(task, projectName) {
   const html = '<p>Ola ' + assignee.name + ',</p><p>A tarefa <strong>' + task.title + '</strong> no projeto <strong>' + projectName + '</strong> esta atrasada. O prazo era ' + deadlineStr + '.</p><p>Acesse a plataforma para atualizar: ' + APP_URL + '</p>';
   const wppMsg = 'Atencao ' + assignee.name + ': a tarefa "' + task.title + '" (' + projectName + ') esta atrasada. Prazo era ' + deadlineStr + '.';
   sendEmailNotification(assignee.email, subject, html);
-  if (assignee.phone) sendWhatsAppNotification(assignee.phone, wppMsg);
+  if (assignee.phone && assignee.whatsappConsent) sendWhatsAppNotification(assignee.phone, wppMsg);
 }
 
 const PLANS = {
@@ -167,10 +168,6 @@ function normalizePhone(s) {
   if (digits.length === 10 || digits.length === 11) digits = '55' + digits;
   return digits;
 }
-
-// Estado em memoria do fluxo de aprovacao por WhatsApp (numero -> id da solicitacao pendente de decisao/forma de pagamento)
-const pendingApprovalReply = new Map();
-const pendingPaymentMethodReply = new Map();
 
 async function applyPurchaseDecision(purchaseRequest, status, extra, actor) {
   const data = { status };
@@ -402,17 +399,19 @@ const server = http.createServer(async (req, res) => {
       const ipKey = 'signup:' + (req.socket.remoteAddress || 'unknown');
       const rlSignup = checkRateLimit(ipKey);
       if (rlSignup.blocked) return sendJSON(res, 429, { error: 'Muitas tentativas de cadastro. Tente novamente em ' + rlSignup.minutesLeft + ' minuto(s).' });
-      const { name, email, password, organizationName, phone } = await parseBody(req);
+      const { name, email, password, organizationName, phone, whatsappConsent } = await parseBody(req);
       if (!name || !email || !password || !organizationName)
         return sendJSON(res, 400, { error: 'Todos os campos sao obrigatorios' });
       if (password.length < 6)
         return sendJSON(res, 400, { error: 'Senha deve ter no minimo 6 caracteres' });
+      if (phone && !whatsappConsent)
+        return sendJSON(res, 400, { error: 'Marque a caixa de consentimento para cadastrar um numero de WhatsApp' });
       const exist = await prisma.user.findUnique({ where: { email } });
       if (exist) { recordFailedAttempt(ipKey); return sendJSON(res, 400, { error: 'Email ja cadastrado' }); }
       const slug = organizationName.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 40);
       const hash = await bcrypt.hash(password, 10);
       const org = await prisma.organization.create({
-        data: { name: organizationName, slug, active: false, subscriptionStatus: 'pending', users: { create: { name, email, phone: phone ? normalizePhone(phone) : null, passwordHash: hash, role: 'admin' } } },
+        data: { name: organizationName, slug, active: false, subscriptionStatus: 'pending', users: { create: { name, email, phone: phone ? normalizePhone(phone) : null, whatsappConsent: !!(phone && whatsappConsent), whatsappConsentAt: (phone && whatsappConsent) ? new Date() : null, passwordHash: hash, role: 'admin' } } },
         include: { users: true }
       });
       const token = jwt.sign({ userId: org.users[0].id, email, organizationId: org.id, role: 'admin' }, JWT_SECRET, { expiresIn: '7d' });
@@ -457,47 +456,44 @@ const server = http.createServer(async (req, res) => {
 
       const actor = { userId: senderUser.id, userName: senderUser.name + ' (WhatsApp)', organizationId: senderUser.organizationId, channel: 'whatsapp' };
 
-      // Passo 2: aguardando escolha da forma de pagamento apos aprovacao
-      if (pendingPaymentMethodReply.has(phone)) {
-        const prId = pendingPaymentMethodReply.get(phone);
+      // Passo 2: existe algum pedido desta organizacao aguardando a forma de pagamento? (o mais antigo primeiro - fila FIFO)
+      const awaitingPayment = await prisma.purchaseRequest.findFirst({
+        where: { status: 'awaiting_payment_method', project: { organizationId: senderUser.organizationId } },
+        orderBy: { createdAt: 'asc' }
+      });
+      if (awaitingPayment) {
         const methods = { '1': 'Boleto', '2': 'Cartao', '3': 'Pix', '4': 'Transferencia' };
         const choice = methods[text.trim()];
-        if (!choice) { await replyTo('Nao entendi. Responda 1-Boleto 2-Cartao 3-Pix 4-Transferencia'); res.statusCode = 200; return res.end('<Response></Response>'); }
-        const pr = await prisma.purchaseRequest.findUnique({ where: { id: prId } });
-        if (pr) {
-          await applyPurchaseDecision(pr, 'approved', { paymentMethod: choice }, actor);
-          const requester = await prisma.user.findUnique({ where: { id: pr.requestedById } });
-          await replyTo('Compra "' + pr.itemName + '" aprovada com pagamento em ' + choice + '.');
-          if (requester && requester.phone) sendWhatsAppNotification(requester.phone, 'Sua solicitacao "' + pr.itemName + '" foi aprovada. Forma de pagamento: ' + choice + '.');
-        }
-        pendingPaymentMethodReply.delete(phone);
+        if (!choice) { await replyTo('Nao entendi. Sobre "' + awaitingPayment.itemName + '", responda: 1-Boleto 2-Cartao 3-Pix 4-Transferencia'); res.statusCode = 200; return res.end('<Response></Response>'); }
+        await applyPurchaseDecision(awaitingPayment, 'approved', { paymentMethod: choice }, actor);
+        const requester = await prisma.user.findUnique({ where: { id: awaitingPayment.requestedById } });
+        await replyTo('Compra "' + awaitingPayment.itemName + '" aprovada com pagamento em ' + choice + '.');
+        if (requester && requester.phone && requester.whatsappConsent) sendWhatsAppNotification(requester.phone, 'Sua solicitacao "' + awaitingPayment.itemName + '" foi aprovada. Forma de pagamento: ' + choice + '.');
         res.statusCode = 200; return res.end('<Response></Response>');
       }
 
-      // Passo 1: aguardando decisao de aprovar/reprovar/ajustar
-      if (pendingApprovalReply.has(phone)) {
-        const prId = pendingApprovalReply.get(phone);
-        const pr = await prisma.purchaseRequest.findUnique({ where: { id: prId } });
-        if (!pr || pr.status !== 'pending_approval') { pendingApprovalReply.delete(phone); await replyTo('Essa solicitacao ja foi decidida por outra pessoa ou nao existe mais.'); res.statusCode = 200; return res.end('<Response></Response>'); }
+      // Passo 1: existe algum pedido desta organizacao aguardando decisao? (o mais antigo primeiro - fila FIFO)
+      const pendingPr = await prisma.purchaseRequest.findFirst({
+        where: { status: 'pending_approval', project: { organizationId: senderUser.organizationId } },
+        orderBy: { createdAt: 'asc' }
+      });
+      if (pendingPr) {
         const choice = text.trim();
         if (choice === '1') {
-          pendingApprovalReply.delete(phone);
-          pendingPaymentMethodReply.set(phone, prId);
-          await replyTo('Aprovada! Qual a forma de pagamento? Responda: 1-Boleto 2-Cartao 3-Pix 4-Transferencia');
+          await prisma.purchaseRequest.update({ where: { id: pendingPr.id }, data: { status: 'awaiting_payment_method' } });
+          await replyTo('Aprovada! Sobre "' + pendingPr.itemName + '", qual a forma de pagamento? Responda: 1-Boleto 2-Cartao 3-Pix 4-Transferencia');
         } else if (choice === '2') {
-          pendingApprovalReply.delete(phone);
-          await applyPurchaseDecision(pr, 'rejected', { rejectionReason: 'Reprovado via WhatsApp' }, actor);
-          const requester = await prisma.user.findUnique({ where: { id: pr.requestedById } });
-          await replyTo('Compra "' + pr.itemName + '" reprovada.');
-          if (requester && requester.phone) sendWhatsAppNotification(requester.phone, 'Sua solicitacao "' + pr.itemName + '" foi reprovada.');
+          await applyPurchaseDecision(pendingPr, 'rejected', { rejectionReason: 'Reprovado via WhatsApp' }, actor);
+          const requester = await prisma.user.findUnique({ where: { id: pendingPr.requestedById } });
+          await replyTo('Compra "' + pendingPr.itemName + '" reprovada.');
+          if (requester && requester.phone && requester.whatsappConsent) sendWhatsAppNotification(requester.phone, 'Sua solicitacao "' + pendingPr.itemName + '" foi reprovada.');
         } else if (choice === '3') {
-          pendingApprovalReply.delete(phone);
-          await applyPurchaseDecision(pr, 'adjustment_requested', { rejectionReason: 'Ajuste solicitado via WhatsApp' }, actor);
-          const requester = await prisma.user.findUnique({ where: { id: pr.requestedById } });
-          await replyTo('Pedido de ajuste registrado para "' + pr.itemName + '".');
-          if (requester && requester.phone) sendWhatsAppNotification(requester.phone, 'Foi pedido um ajuste na sua solicitacao "' + pr.itemName + '". Verifique na plataforma.');
+          await applyPurchaseDecision(pendingPr, 'adjustment_requested', { rejectionReason: 'Ajuste solicitado via WhatsApp' }, actor);
+          const requester = await prisma.user.findUnique({ where: { id: pendingPr.requestedById } });
+          await replyTo('Pedido de ajuste registrado para "' + pendingPr.itemName + '".');
+          if (requester && requester.phone && requester.whatsappConsent) sendWhatsAppNotification(requester.phone, 'Foi pedido um ajuste na sua solicitacao "' + pendingPr.itemName + '". Verifique na plataforma.');
         } else {
-          await replyTo('Nao entendi. Responda 1-Aprovar 2-Reprovar 3-Pedir Ajuste, referente a: ' + pr.itemName);
+          await replyTo('Nao entendi. Responda 1-Aprovar 2-Reprovar 3-Pedir Ajuste, referente a: ' + pendingPr.itemName);
         }
         res.statusCode = 200; return res.end('<Response></Response>');
       }
@@ -552,12 +548,13 @@ const server = http.createServer(async (req, res) => {
     if (req.url === '/api/v1/auth/me' && req.method === 'GET') {
       const u = await prisma.user.findUnique({ where: { id: user.userId }, include: { organization: true } });
       if (!u) return sendJSON(res, 404, { error: 'Usuario nao encontrado' });
-      return sendJSON(res, 200, { id: u.id, name: u.name, email: u.email, phone: u.phone, role: u.role, organization: { id: u.organization.id, name: u.organization.name, slug: u.organization.slug } });
+      return sendJSON(res, 200, { id: u.id, name: u.name, email: u.email, phone: u.phone, whatsappConsent: u.whatsappConsent, role: u.role, organization: { id: u.organization.id, name: u.organization.name, slug: u.organization.slug } });
     }
 
     if (req.url === '/api/v1/auth/me/phone' && req.method === 'PUT') {
-      const { phone } = await parseBody(req);
-      const updated = await prisma.user.update({ where: { id: user.userId }, data: { phone: phone ? normalizePhone(phone) : null } });
+      const { phone, whatsappConsent } = await parseBody(req);
+      if (phone && !whatsappConsent) return sendJSON(res, 400, { error: 'Marque a caixa de consentimento para cadastrar um numero de WhatsApp' });
+      const updated = await prisma.user.update({ where: { id: user.userId }, data: { phone: phone ? normalizePhone(phone) : null, whatsappConsent: !!(phone && whatsappConsent), whatsappConsentAt: (phone && whatsappConsent) ? new Date() : null } });
       return sendJSON(res, 200, { id: updated.id, phone: updated.phone });
     }
 
@@ -931,9 +928,7 @@ const server = http.createServer(async (req, res) => {
         const subject = 'Nova solicitacao de compra: ' + pr.itemName;
         const html = '<p>' + (requester ? requester.name : 'Um engenheiro') + ' solicitou a compra de <strong>' + pr.itemName + '</strong> (qtd ' + pr.quantity + ') no projeto ' + project.name + '. Valor estimado: R$ ' + pr.estimatedValue.toFixed(2) + '.</p><p>Acesse a plataforma para aprovar: ' + APP_URL + '</p>';
         sendEmailNotification(a.email, subject, html);
-        if (a.phone) {
-          const cleanPhone = normalizePhone(a.phone);
-          pendingApprovalReply.set(cleanPhone, pr.id);
+        if (a.phone && a.whatsappConsent) {
           sendWhatsAppNotification(a.phone, 'Nova solicitacao de compra: "' + pr.itemName + '" (' + project.name + '), valor estimado R$ ' + pr.estimatedValue.toFixed(2) + '.\n\nResponda:\n1 - Aprovar\n2 - Reprovar\n3 - Pedir Ajuste');
         }
       });
@@ -980,7 +975,7 @@ const server = http.createServer(async (req, res) => {
         const subject = 'Solicitacao de compra ' + statusLabel + ': ' + before.itemName;
         const html = '<p>Sua solicitacao de <strong>' + before.itemName + '</strong> foi <strong>' + statusLabel + '</strong>' + (body.rejectionReason ? ': ' + body.rejectionReason : '') + '.</p>';
         sendEmailNotification(requester.email, subject, html);
-        if (requester.phone) sendWhatsAppNotification(requester.phone, 'Sua solicitacao "' + before.itemName + '" foi ' + statusLabel + '.' + (body.rejectionReason ? ' Motivo: ' + body.rejectionReason : ''));
+        if (requester.phone && requester.whatsappConsent) sendWhatsAppNotification(requester.phone, 'Sua solicitacao "' + before.itemName + '" foi ' + statusLabel + '.' + (body.rejectionReason ? ' Motivo: ' + body.rejectionReason : ''));
       }
       return sendJSON(res, 200, updated);
     }
@@ -1027,18 +1022,19 @@ const server = http.createServer(async (req, res) => {
     // ============ USUARIOS / EQUIPE ============
     if (req.url === '/api/v1/users' && req.method === 'GET') {
       const users = await prisma.user.findMany({ where: { organizationId: user.organizationId }, orderBy: { createdAt: 'asc' } });
-      return sendJSON(res, 200, users.map(u => ({ id: u.id, name: u.name, email: u.email, phone: u.phone, role: u.role, createdAt: u.createdAt })));
+      return sendJSON(res, 200, users.map(u => ({ id: u.id, name: u.name, email: u.email, phone: u.phone, whatsappConsent: u.whatsappConsent, role: u.role, createdAt: u.createdAt })));
     }
 
     if (req.url === '/api/v1/users' && req.method === 'POST') {
       if (user.role !== 'admin') return sendJSON(res, 403, { error: 'Apenas administradores podem convidar usuarios' });
-      const { name, email, password, role, phone } = await parseBody(req);
+      const { name, email, password, role, phone, whatsappConsent } = await parseBody(req);
       if (!name || !email || !password) return sendJSON(res, 400, { error: 'Nome, email e senha sao obrigatorios' });
       if (password.length < 6) return sendJSON(res, 400, { error: 'Senha deve ter no minimo 6 caracteres' });
+      if (phone && !whatsappConsent) return sendJSON(res, 400, { error: 'Marque a caixa de consentimento para cadastrar um numero de WhatsApp' });
       const exist = await prisma.user.findUnique({ where: { email } });
       if (exist) return sendJSON(res, 400, { error: 'Email ja cadastrado' });
       const hash = await bcrypt.hash(password, 10);
-      const newUser = await prisma.user.create({ data: { name, email, phone: phone ? normalizePhone(phone) : null, passwordHash: hash, role: role || 'user', organizationId: user.organizationId } });
+      const newUser = await prisma.user.create({ data: { name, email, phone: phone ? normalizePhone(phone) : null, whatsappConsent: !!(phone && whatsappConsent), whatsappConsentAt: (phone && whatsappConsent) ? new Date() : null, passwordHash: hash, role: role || 'user', organizationId: user.organizationId } });
       return sendJSON(res, 201, { id: newUser.id, name: newUser.name, email: newUser.email, role: newUser.role });
     }
 
