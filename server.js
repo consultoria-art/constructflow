@@ -48,7 +48,7 @@ async function sendEmailNotification(toEmail, subject, htmlBody) {
 async function sendWhatsAppNotification(toPhone, message) {
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_WHATSAPP_FROM || !toPhone) return;
   try {
-    const cleanPhone = String(toPhone).replace(/\D/g, '');
+    const cleanPhone = normalizePhone(toPhone);
     const to = 'whatsapp:+' + cleanPhone;
     const params = new URLSearchParams({ From: TWILIO_WHATSAPP_FROM, To: to, Body: message });
     await fetch('https://api.twilio.com/2010-04-01/Accounts/' + TWILIO_ACCOUNT_SID + '/Messages.json', {
@@ -162,7 +162,10 @@ function parseFormBody(req) {
 }
 
 function normalizePhone(s) {
-  return String(s || '').replace(/\D/g, '');
+  let digits = String(s || '').replace(/\D/g, '');
+  // Se o numero tem 10 ou 11 digitos (DDD + numero, sem codigo de pais), assume Brasil e completa com 55
+  if (digits.length === 10 || digits.length === 11) digits = '55' + digits;
+  return digits;
 }
 
 // Estado em memoria do fluxo de aprovacao por WhatsApp (numero -> id da solicitacao pendente de decisao/forma de pagamento)
@@ -409,7 +412,7 @@ const server = http.createServer(async (req, res) => {
       const slug = organizationName.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 40);
       const hash = await bcrypt.hash(password, 10);
       const org = await prisma.organization.create({
-        data: { name: organizationName, slug, active: false, subscriptionStatus: 'pending', users: { create: { name, email, phone: phone || null, passwordHash: hash, role: 'admin' } } },
+        data: { name: organizationName, slug, active: false, subscriptionStatus: 'pending', users: { create: { name, email, phone: phone ? normalizePhone(phone) : null, passwordHash: hash, role: 'admin' } } },
         include: { users: true }
       });
       const token = jwt.sign({ userId: org.users[0].id, email, organizationId: org.id, role: 'admin' }, JWT_SECRET, { expiresIn: '7d' });
@@ -554,7 +557,7 @@ const server = http.createServer(async (req, res) => {
 
     if (req.url === '/api/v1/auth/me/phone' && req.method === 'PUT') {
       const { phone } = await parseBody(req);
-      const updated = await prisma.user.update({ where: { id: user.userId }, data: { phone: phone || null } });
+      const updated = await prisma.user.update({ where: { id: user.userId }, data: { phone: phone ? normalizePhone(phone) : null } });
       return sendJSON(res, 200, { id: updated.id, phone: updated.phone });
     }
 
@@ -1035,7 +1038,7 @@ const server = http.createServer(async (req, res) => {
       const exist = await prisma.user.findUnique({ where: { email } });
       if (exist) return sendJSON(res, 400, { error: 'Email ja cadastrado' });
       const hash = await bcrypt.hash(password, 10);
-      const newUser = await prisma.user.create({ data: { name, email, phone: phone || null, passwordHash: hash, role: role || 'user', organizationId: user.organizationId } });
+      const newUser = await prisma.user.create({ data: { name, email, phone: phone ? normalizePhone(phone) : null, passwordHash: hash, role: role || 'user', organizationId: user.organizationId } });
       return sendJSON(res, 201, { id: newUser.id, name: newUser.name, email: newUser.email, role: newUser.role });
     }
 
