@@ -27,6 +27,8 @@ model User {
   name         String
   email        String   @unique
   phone        String?
+  whatsappConsent Boolean @default(false)
+  whatsappConsentAt DateTime?
   passwordHash String
   role         String   @default("user")
   createdAt    DateTime @default(now())
