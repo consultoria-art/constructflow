@@ -267,6 +267,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <input type="text" id="signupOrg" placeholder="Nome da sua empresa">
 <label>WhatsApp (opcional, com DDD - para notificacoes e aprovacoes)</label>
 <input type="text" id="signupPhone" placeholder="Ex: 5565999999999">
+<label style="display:flex;align-items:flex-start;gap:8px;font-weight:normal;font-size:13px;"><input type="checkbox" id="signupWhatsappConsent" style="width:auto;margin-top:3px;"> Concordo em receber notificacoes e aprovacoes via WhatsApp da ConstructFlow neste numero.</label>
 <label>Senha</label>
 <input type="password" id="signupPassword" placeholder="Minimo 6 caracteres">
 <button onclick="signup()">Criar conta</button>
@@ -515,6 +516,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
         <div class="error" id="myPhoneError" style="color:#dc2626;font-size:13px;margin-bottom:8px;display:none;"></div>
         <label class="field">Seu WhatsApp (para notificacoes e aprovacoes)</label>
         <input class="input" id="cfgUserPhone" type="text" placeholder="Ex: 5565999999999">
+        <label class="field" style="display:flex;align-items:flex-start;gap:8px;"><input type="checkbox" id="cfgWhatsappConsent" style="width:auto;margin-top:3px;"> Concordo em receber notificacoes e aprovacoes via WhatsApp neste numero.</label>
         <button class="btn btn-secondary btn-sm" onclick="saveMyPhone()">Salvar WhatsApp</button>
       </div>
       <div class="card" id="cfgBillingCard">
@@ -640,6 +642,7 @@ body { font-family: 'Inter', sans-serif; background: #f3f4f6; color: #111827; }
 <input id="userEmailInput" type="email" class="input">
 <label class="field">Telefone/WhatsApp (com DDD, so numeros - opcional)</label>
 <input id="userPhoneInput" type="text" class="input" placeholder="Ex: 5565999999999">
+<label class="field" style="display:flex;align-items:flex-start;gap:8px;"><input type="checkbox" id="userWhatsappConsent" style="width:auto;margin-top:3px;"> Esta pessoa concorda em receber notificacoes e aprovacoes via WhatsApp neste numero.</label>
 <label class="field">Senha temporaria</label>
 <input id="userPasswordInput" type="password" class="input" placeholder="Minimo 6 caracteres">
 <label class="field">Perfil</label>
@@ -1018,15 +1021,17 @@ async function signup() {
   const email = document.getElementById('signupEmail').value;
   const organizationName = document.getElementById('signupOrg').value;
   const phone = document.getElementById('signupPhone').value.replace(/\D/g, '');
+  const whatsappConsent = document.getElementById('signupWhatsappConsent').checked;
   const password = document.getElementById('signupPassword').value;
   const error = document.getElementById('signupError');
   const loader = document.getElementById('signupLoader');
   error.style.display = 'none';
   if (!name || !email || !organizationName || !password) { error.textContent = 'Preencha todos os campos'; error.style.display = 'block'; return; }
   if (password.length < 6) { error.textContent = 'Senha deve ter no minimo 6 caracteres'; error.style.display = 'block'; return; }
+  if (phone && !whatsappConsent) { error.textContent = 'Marque a caixa de consentimento para cadastrar um WhatsApp'; error.style.display = 'block'; return; }
   loader.style.display = 'block';
   try {
-    const res = await fetch(API + '/api/v1/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, email, password, organizationName, phone: phone || undefined }) });
+    const res = await fetch(API + '/api/v1/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, email, password, organizationName, phone: phone || undefined, whatsappConsent }) });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Erro ao criar conta');
     setToken(data.token);
@@ -3395,6 +3400,7 @@ function openUserModal() {
   document.getElementById('userNameInput').value = '';
   document.getElementById('userEmailInput').value = '';
   document.getElementById('userPhoneInput').value = '';
+  document.getElementById('userWhatsappConsent').checked = false;
   document.getElementById('userPasswordInput').value = '';
   document.getElementById('userRoleInput').value = 'engenheiro';
   document.getElementById('userModal').style.display = 'flex';
@@ -3404,14 +3410,16 @@ async function saveUser() {
   const name = document.getElementById('userNameInput').value;
   const email = document.getElementById('userEmailInput').value;
   const phone = document.getElementById('userPhoneInput').value.replace(/\D/g, '');
+  const whatsappConsent = document.getElementById('userWhatsappConsent').checked;
   const password = document.getElementById('userPasswordInput').value;
   const role = document.getElementById('userRoleInput').value;
   const error = document.getElementById('userError');
   if (!name || !email || !password) { error.textContent = 'Preencha todos os campos'; error.style.display = 'block'; return; }
   if (password.length < 6) { error.textContent = 'Senha deve ter no minimo 6 caracteres'; error.style.display = 'block'; return; }
+  if (phone && !whatsappConsent) { error.textContent = 'Marque a caixa de consentimento para cadastrar um WhatsApp'; error.style.display = 'block'; return; }
   error.style.display = 'none';
   try {
-    const res = await fetch(API + '/api/v1/users', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ name, email, phone: phone || null, password, role }) });
+    const res = await fetch(API + '/api/v1/users', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ name, email, phone: phone || null, whatsappConsent, password, role }) });
     if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Erro ao convidar'); }
     closeModal('userModal');
     loadEquipeView();
@@ -3436,6 +3444,7 @@ function loadConfiguracoesView() {
   document.getElementById('myPhoneError').style.display = 'none';
   fetch(API + '/api/v1/auth/me', { headers: apiHeaders() }).then(r => r.json()).then(u => {
     document.getElementById('cfgUserPhone').value = u.phone || '';
+    document.getElementById('cfgWhatsappConsent').checked = !!u.whatsappConsent;
   });
   document.getElementById('cfgBillingCard').classList.toggle('hidden', currentUser.role !== 'admin');
   if (currentUser.role === 'admin') {
@@ -3448,9 +3457,11 @@ function loadConfiguracoesView() {
 
 async function saveMyPhone() {
   const phone = document.getElementById('cfgUserPhone').value.replace(/\D/g, '');
+  const whatsappConsent = document.getElementById('cfgWhatsappConsent').checked;
   const error = document.getElementById('myPhoneError');
+  if (phone && !whatsappConsent) { error.textContent = 'Marque a caixa de consentimento para cadastrar um WhatsApp'; error.style.display = 'block'; return; }
   try {
-    await fetch(API + '/api/v1/auth/me/phone', { method: 'PUT', headers: apiHeaders(), body: JSON.stringify({ phone: phone || null }) });
+    await fetch(API + '/api/v1/auth/me/phone', { method: 'PUT', headers: apiHeaders(), body: JSON.stringify({ phone: phone || null, whatsappConsent }) });
     error.style.display = 'none';
     alert('WhatsApp atualizado com sucesso.');
   } catch (e) { error.textContent = 'Erro ao salvar'; error.style.display = 'block'; }
