@@ -1144,6 +1144,7 @@ let currentPurchaseDetailId = null;
 
 const PURCHASE_STATUS_LABELS = {
   pending_approval: 'Aguardando Aprovacao',
+  awaiting_payment_method: 'Aprovado - Aguardando Forma de Pagamento',
   approved: 'Aprovado',
   rejected: 'Reprovado',
   adjustment_requested: 'Ajuste Solicitado',
@@ -1152,6 +1153,7 @@ const PURCHASE_STATUS_LABELS = {
 };
 const PURCHASE_STATUS_COLORS = {
   pending_approval: '#fef9c3;color:#854d0e',
+  awaiting_payment_method: '#e0f2fe;color:#075985',
   approved: '#dcfce7;color:#166534',
   rejected: '#fee2e2;color:#991b1b',
   adjustment_requested: '#fed7aa;color:#9a3412',
@@ -1237,6 +1239,11 @@ function openPurchaseDetail(id) {
   if (r.status === 'rejected' || r.status === 'adjustment_requested') {
     actionsHtml += '<p style="font-size:12px;color:#9a3412;">Motivo: ' + esc(r.rejectionReason || '-') + '</p>';
   }
+  if (r.status === 'awaiting_payment_method') {
+    actionsHtml += '<label class="field">Forma de pagamento</label>'
+      + '<select id="purchasePaymentMethodWeb" class="input"><option value="Boleto">Boleto</option><option value="Cartao">Cartao</option><option value="Pix">Pix</option><option value="Transferencia">Transferencia</option></select>'
+      + '<button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="confirmPaymentMethodWeb()">Confirmar Forma de Pagamento</button>';
+  }
   if (r.status === 'approved') {
     actionsHtml += '<p style="font-size:12px;color:#166534;">Forma de pagamento: ' + esc(r.paymentMethod || '-') + '</p>';
     actionsHtml += '<button class="btn btn-secondary btn-sm" onclick="markPurchaseStatus(\'waiting_delivery\')">Marcar como Aguardando Entrega</button>';
@@ -1284,6 +1291,16 @@ async function decidePurchase(status) {
     await loadComprasView();
     openPurchaseDetail(currentPurchaseDetailId);
   } catch (e) { error.textContent = 'Erro: ' + e.message; error.style.display = 'block'; }
+}
+
+async function confirmPaymentMethodWeb() {
+  const paymentMethod = document.getElementById('purchasePaymentMethodWeb').value;
+  try {
+    const res = await fetch(API + '/api/v1/purchase-requests/' + currentPurchaseDetailId, { method: 'PUT', headers: apiHeaders(), body: JSON.stringify({ status: 'approved', paymentMethod }) });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+    await loadComprasView();
+    openPurchaseDetail(currentPurchaseDetailId);
+  } catch (e) { alert('Erro: ' + e.message); }
 }
 
 async function markPurchaseStatus(status) {
