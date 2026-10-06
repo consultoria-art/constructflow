@@ -223,6 +223,40 @@ model AuditLog {
   organization   Organization @relation(fields: [organizationId], references: [id])
   createdAt      DateTime @default(now())
 }
+model Invoice {
+  id                 String    @id @default(cuid())
+  organizationId     String
+  projectId          String
+  purchaseRequestId  String?
+  number             String?
+  series             String?
+  accessKey          String?
+  supplierName       String?
+  supplierCnpj       String?
+  issueDate          DateTime?
+  totalValue         Float     @default(0)
+  sourceType         String    @default("manual")
+  deductFromBudget   Boolean   @default(false)
+  deductFromPurchase Boolean   @default(false)
+  documentId         String?
+  notes              String?
+  createdById        String?
+  createdAt          DateTime  @default(now())
+}
+
+model InvoiceItem {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  description String
+  itemType    String   @default("material")
+  quantity    Float    @default(1)
+  unit        String?
+  unitValue   Float    @default(0)
+  totalValue  Float    @default(0)
+  materialId  String?
+  movementId  String?
+  createdAt   DateTime @default(now())
+}
 
 model Document {
   id         String   @id @default(cuid())
