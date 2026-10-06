@@ -411,7 +411,7 @@ const server = http.createServer(async (req, res) => {
       const slug = organizationName.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 40);
       const hash = await bcrypt.hash(password, 10);
       const org = await prisma.organization.create({
-        data: { name: organizationName, slug, active: false, subscriptionStatus: 'pending', users: { create: { name, email, phone: phone ? normalizePhone(phone) : null, whatsappConsent: !!(phone && whatsappConsent), whatsappConsentAt: (phone && whatsappConsent) ? new Date() : null, passwordHash: hash, role: 'admin' } } },
+        data: { name: organizationName, slug, active: true, plan: 'trial', subscriptionStatus: 'active', trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), users: { create: { name, email, phone: phone ? normalizePhone(phone) : null, whatsappConsent: !!(phone && whatsappConsent), whatsappConsentAt: (phone && whatsappConsent) ? new Date() : null, passwordHash: hash, role: 'admin' } } },
         include: { users: true }
       });
       const token = jwt.sign({ userId: org.users[0].id, email, organizationId: org.id, role: 'admin' }, JWT_SECRET, { expiresIn: '7d' });
@@ -586,7 +586,7 @@ const server = http.createServer(async (req, res) => {
 
     if (req.url === '/api/v1/billing/status' && req.method === 'GET') {
       const org = await prisma.organization.findUnique({ where: { id: user.organizationId } });
-      return sendJSON(res, 200, { plan: org.plan, active: org.active, subscriptionStatus: org.subscriptionStatus });
+      let o = org; if (o.plan === 'trial' && o.trialEndsAt && new Date(o.trialEndsAt) < new Date() && o.active) { o = await prisma.organization.update({ where: { id: o.id }, data: { active: false, subscriptionStatus: 'pending' } }); } return sendJSON(res, 200, { plan: o.plan, active: o.active, subscriptionStatus: o.subscriptionStatus, trialEndsAt: o.trialEndsAt });
     }
 
     if (req.url === '/api/v1/billing/subscribe' && req.method === 'POST') {
