@@ -5,7 +5,7 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient(); const notas = require('./notas');
 const crypto = require('crypto');
 let JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -391,7 +391,7 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
-    if (req.url === '/api/v1/health' && req.method === 'GET') {
+    if (req.url === '/notas-fiscais.js') return notas.serveScript(res); if (req.url === '/api/v1/health' && req.method === 'GET') {
       return sendJSON(res, 200, { status: 'ok' });
     }
 
@@ -1226,11 +1226,11 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { success: true });
     }
 
-    return sendJSON(res, 404, { error: 'Rota nao encontrada' });
+    if (req.url.startsWith('/api/v1/invoices')) return notas.handle(req, res, user, { prisma, sendJSON, parseBody, canSeeFinance, logAudit, ANTHROPIC_API_KEY }); return sendJSON(res, 404, { error: 'Rota nao encontrada' });
   } catch (error) {
     return sendJSON(res, 500, { error: error.message });
   }
 });
 
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, '0.0.0.0', () => console.log('OK: porta ' + PORT));
+notas.ensureSchema(prisma).finally(() => server.listen(PORT, '0.0.0.0', () => console.log('OK: porta ' + PORT)));
